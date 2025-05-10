@@ -1,0 +1,9 @@
+loguru>=0.7.0
+fastapi
+uvicorn
+requests
+python-dotenv>=1.0.0
+pydantic
+tiktoken
+qdrant-client>=1.5.0
+llama-index-llms-ollama==0.3.0

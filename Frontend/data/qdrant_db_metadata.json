@@ -1,0 +1,198 @@
+{
+    "collections": [
+        "router_agw66_ym_log_vector",
+        "router_dgw70_baal_re0_log_vector",
+        "router_dgw70_hnsn_re0_log_vector",
+        "router_dgw70_pr_re0_log_vector",
+        "router_dgw70_slnt_re0_log_vector",
+        "router_dgw71_flfrd_re0_log_vector",
+        "router_dgw71_grnsbr_re0_log_vector",
+        "router_dgw71_pr_re0_log_vector",
+        "router_dgw71_rchrd_re0_log_vector",
+        "router_fw66_dupt_log_vector",
+        "router_fw66_ed2_log_vector",
+        "router_fw66_ms1_log_vector",
+        "router_fw66_nbmn_log_vector",
+        "router_fw66_to3_log_vector",
+        "router_fw66_va2_log_vector",
+        "router_fw66_wlfdle_log_vector",
+        "router_fw66_ym_log_vector",
+        "router_fw67_dupt_log_vector",
+        "router_fw67_ed2_log_vector",
+        "router_fw67_ms1_log_vector",
+        "router_fw67_nbmn_log_vector",
+        "router_fw67_to3_log_vector",
+        "router_fw67_va2_log_vector",
+        "router_fw67_wlfdle_log_vector",
+        "router_new_fw66_qcmtl_log_vector",
+        "router_new_fw67_qcmtl_log_vector",
+        "router_vadc66a_ml02_log_vector"
+    ],
+    "agw": {
+        "devices": [
+            "agw66"
+        ],
+        "locations": [
+            "ym"
+        ],
+        "categories": [
+            "DAEMON",
+            "ETHPORT",
+            "UNKNOWN",
+            "USBHSD"
+        ],
+        "event_types": [
+            "DAEMON_SYSTEM_MSG",
+            "ETHPORT_IF_BANDWIDTH_CHANGE",
+            "ETHPORT_IF_DOWN_ADMIN_DOWN",
+            "ETHPORT_IF_DOWN_LINK_FAILURE",
+            "ETHPORT_IF_DOWN_PORT_CHANNEL_MEMBERS_DOWN",
+            "ETHPORT_IF_DUPLEX",
+            "ETHPORT_IF_HARDWARE",
+            "ETHPORT_IF_RX_FLOW_CONTROL",
+            "ETHPORT_IF_TX_FLOW_CONTROL",
+            "ETHPORT_IF_UP",
+            "ETHPORT_SPEED",
+            "UNKNOWN",
+            "USBHSD_ABSENT_ALERT"
+        ],
+        "interfaces": [
+            "Ethernet11/10",
+            "Ethernet11/11",
+            "Ethernet11/12",
+            "Ethernet11/29",
+            "Ethernet11/30",
+            "Ethernet11/37",
+            "Ethernet11/38",
+            "Ethernet11/39",
+            "Ethernet11/4",
+            "Ethernet11/40",
+            "Ethernet11/41",
+            "Ethernet11/42",
+            "Ethernet11/5",
+            "Ethernet11/7",
+            "Ethernet11/8",
+            "Ethernet11/9",
+            "Ethernet12/33",
+            "Ethernet12/34",
+            "Ethernet3/29",
+            "Ethernet3/30",
+            "Ethernet4/3",
+            "Ethernet4/4",
+            "Ethernet5/3",
+            "port-channel11"
+        ]
+    },
+    "dgw": {
+        "devices": [
+            "dgw70",
+            "dgw71"
+        ],
+        "locations": [
+            "baal_re0",
+            "flfrd_re0",
+            "grnsbr_re0",
+            "hnsn_re0",
+            "pr_re0",
+            "rchrd_re0",
+            "slnt_re0"
+        ],
+        "categories": [
+            "KERN"
+        ],
+        "event_types": [
+            "KERN"
+        ],
+        "interfaces": []
+    },
+    "fw": {
+        "devices": [
+            "fw66",
+            "fw67",
+            "new_fw66",
+            "new_fw67"
+        ],
+        "locations": [
+            "dupt",
+            "ed2",
+            "ms1",
+            "nbmn",
+            "qcmtl",
+            "to3",
+            "va2",
+            "wlfdle",
+            "ym"
+        ],
+        "categories": [
+            "AUTH",
+            "CHANGE",
+            "CRON",
+            "DAEMON",
+            "INTERACT",
+            "KERN",
+            "NTP",
+            "UNKNOWN",
+            "USER"
+        ],
+        "event_types": [
+            "AUTH",
+            "AUTH_SNMPD_AUTH_RESTRICTED_ADDRESS",
+            "CHANGE_UI_CFG_AUDIT_OTHER",
+            "CHANGE_UI_CFG_AUDIT_SET",
+            "CRON",
+            "DAEMON",
+            "DAEMON_JTASK_IO_CONNECT_FAILED",
+            "DAEMON_LICENSE_EXPIRED_KEY_DELETED",
+            "DAEMON_RPD_RT_HWM_NOTICE",
+            "DAEMON_RPD_RT_TIME_AVRGD_WM_NOTICE",
+            "DAEMON_SNMPD_SOCKET_FAILURE",
+            "DAEMON_UI_CHILD_EXITED",
+            "DAEMON_UI_COMMIT_NO_MASTER_PASSWORD",
+            "INTERACT_UI_AUTH_EVENT",
+            "INTERACT_UI_CHILD_START",
+            "INTERACT_UI_CHILD_STATUS",
+            "INTERACT_UI_CMDLINE_READ_LINE",
+            "INTERACT_UI_COMMIT",
+            "INTERACT_UI_COMMIT_COMPLETED",
+            "INTERACT_UI_COMMIT_PROGRESS",
+            "INTERACT_UI_JUNOSCRIPT_CMD",
+            "INTERACT_UI_LOAD_EVENT",
+            "INTERACT_UI_LOGIN_EVENT",
+            "INTERACT_UI_LOGOUT_EVENT",
+            "INTERACT_UI_NETCONF_CMD",
+            "KERN",
+            "NTP",
+            "UNKNOWN",
+            "USER_IFINFO_IFD_NAME"
+        ],
+        "interfaces": [],
+        "processes": [
+            "alarmd",
+            "check",
+            "craftd",
+            "cron",
+            "ifinfo",
+            "mgd",
+            "rpd",
+            "snmpd",
+            "sshd",
+            "xd",
+            "xntpd"
+        ]
+    },
+    "vadc": {
+        "devices": [
+            "vadc66a"
+        ],
+        "locations": [
+            "ml02"
+        ],
+        "categories": [
+            "UNKNOWN"
+        ],
+        "event_types": [
+            "UNKNOWN"
+        ],
+        "interfaces": []
+    }
+}
