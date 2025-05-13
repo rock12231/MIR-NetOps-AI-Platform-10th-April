@@ -1,6 +1,7 @@
 import uuid
 import json
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -20,6 +21,9 @@ from app.utils.analysis_utils import detect_flapping_interfaces, analyze_interfa
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Network Log Analysis"])
+
+# Get LLM provider from environment for token counting and logging
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 
 @router.get("/collections")
@@ -237,18 +241,18 @@ async def generate_summary(request: SummaryRequest):
         logs=json.dumps(log_entries, indent=2, default=str) # Ensure datetimes, etc., are serialized
     )
 
-    input_token_count = count_tokens(formatted_prompt)
-    logger.info(f"RID: {request_id} - Input token count approx: {input_token_count}")
+    input_token_count = count_tokens(formatted_prompt, provider=LLM_PROVIDER)
+    logger.info(f"RID: {request_id} - Input token count approx: {input_token_count} for provider: {LLM_PROVIDER}")
 
     try:
         response = llm.complete(formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
-        logger.error(f"RID: {request_id} - Ollama API call failed: {e}", exc_info=True)
+        logger.error(f"RID: {request_id} - LLM API call failed: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Error communicating with LLM: {str(e)}")
 
-    output_token_count = count_tokens(raw_response_text)
-    token_logger.info(f"RID: {request_id}, Collection: {collection_name}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
+    output_token_count = count_tokens(raw_response_text, provider=LLM_PROVIDER)
+    token_logger.info(f"RID: {request_id}, Collection: {collection_name}, Provider: {LLM_PROVIDER}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
     logger.debug(f"RID: {request_id} - Raw LLM response:\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)
@@ -361,18 +365,18 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
         logs=json.dumps(log_entries, indent=2, default=str)
     )
 
-    input_token_count = count_tokens(formatted_prompt)
-    logger.info(f"RID: {request_id} - Input token count for detailed analysis: {input_token_count}")
+    input_token_count = count_tokens(formatted_prompt, provider=LLM_PROVIDER)
+    logger.info(f"RID: {request_id} - Input token count for detailed analysis: {input_token_count} for provider: {LLM_PROVIDER}")
 
     try:
         response = llm.complete(formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
-        logger.error(f"RID: {request_id} - Ollama API call failed for detailed analysis: {e}", exc_info=True)
+        logger.error(f"RID: {request_id} - LLM API call failed for detailed analysis: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Error communicating with LLM: {str(e)}")
 
-    output_token_count = count_tokens(raw_response_text)
-    token_logger.info(f"RID: {request_id}, Collection: {collection_name} (AnalyzeLogs), Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
+    output_token_count = count_tokens(raw_response_text, provider=LLM_PROVIDER)
+    token_logger.info(f"RID: {request_id}, Collection: {collection_name} (AnalyzeLogs), Provider: {LLM_PROVIDER}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
     logger.debug(f"RID: {request_id} - Raw LLM response (detailed analysis):\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)

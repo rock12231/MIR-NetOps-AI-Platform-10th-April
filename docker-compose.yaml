@@ -16,7 +16,10 @@ services:
       - METADATA_PATH=${METADATA_PATH:-/app/data/qdrant_db_metadata.json}
       - API_BASE_URL=${API_BASE_URL:-http://0.0.0.0:8001}
       - CHAT_API_BASE_URL=${CHAT_API_BASE_URL:-http://172.178.38.117:8001}
-      - PROMPT_FILE_PATH=/app/data/prompt.txt
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyBwArjLFjNQfXJSZQXkP6vs1ZuWdf_-UMc}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - PROMPT_FILE_PATH=app/data/prompt.txt
     volumes:
       - ./Backend:/app
       - ./logs:/app/logs

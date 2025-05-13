@@ -2,30 +2,42 @@ import json
 import re
 import logging
 import os
+from typing import Optional
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 def load_prompt_template():
-    prompt_file_path = os.getenv("PROMPT_FILE_PATH", "app/data/prompt.txt") # Default if env var not set
-    try:
-        # Ensure the path is relative to the application root if using default
-        # If PROMPT_FILE_PATH is absolute, os.path.join will handle it.
-        # In Docker, with WORKDIR /app, and files in /app/app/data, this should be:
-        # PROMPT_FILE_PATH=/app/app/data/prompt.txt (set in Dockerfile)
-        # The default "app/data/prompt.txt" would resolve to "/app/app/data/prompt.txt"
-        # if the script is run from /app.
-        
-        # If PROMPT_FILE_PATH is /app/app/data/prompt.txt as set in Dockerfile, it's absolute
-        # and will be used directly.
-        
-        with open(prompt_file_path, "r") as file:
-            return file.read()
-    except FileNotFoundError:
-        logger.error(f"Prompt file not found at: {prompt_file_path}. Using default prompt.")
-        return """Analyze the following logs:\n{logs}\nProvide a summary and identify anomalies. Return valid JSON.\nSchema: {model_schema}"""
-    except Exception as e:
-        logger.error(f"Error loading prompt file {prompt_file_path}: {e}. Using default prompt.")
-        return """Analyze the following logs:\n{logs}\nProvide a summary and identify anomalies. Return valid JSON.\nSchema: {model_schema}"""
+    # Possible prompt file locations
+    possible_paths = [
+        os.getenv("PROMPT_FILE_PATH"),  # 1. Environment variable (highest priority)
+        "app/app/data/prompt.txt",      # 2. Docker path (WORKDIR /app)
+        "Backend/data/prompt.txt",      # 3. Local development path
+        "data/prompt.txt",              # 4. Relative from current directory
+        Path(__file__).parent.parent.parent / "data" / "prompt.txt"  # 5. From module location
+    ]
+    
+    # Filter out None values (if env var is not set)
+    possible_paths = [p for p in possible_paths if p]
+    
+    # Try each path until we find a valid file
+    for prompt_file_path in possible_paths:
+        try:
+            logger.info(f"Attempting to load prompt from: {prompt_file_path}")
+            with open(prompt_file_path, "r") as file:
+                prompt_content = file.read()
+                logger.info(f"Successfully loaded prompt from: {prompt_file_path}")
+                return prompt_content
+        except FileNotFoundError:
+            logger.debug(f"Prompt file not found at: {prompt_file_path}")
+            continue
+        except Exception as e:
+            logger.warning(f"Error loading prompt file {prompt_file_path}: {e}")
+            continue
+    
+    # If we get here, none of the paths worked
+    logger.error("Failed to find valid prompt file at any of the expected locations. Using default prompt.")
+    return """Analyze the following logs:\n{logs}\nProvide a summary and identify anomalies. Return valid JSON.\nSchema: {model_schema}"""
 
 
 def clean_and_parse_json(raw_text: str):
@@ -154,13 +166,38 @@ def clean_and_parse_json(raw_text: str):
     return None, error_msg
 
 
-def count_tokens(text: str) -> int:
-    if not text: return 0
+def count_tokens(text: str, provider: Optional[str] = None) -> int:
+    """
+    Estimate token count for the given text based on provider.
+    
+    Args:
+        text: The text to count tokens for
+        provider: The LLM provider (e.g., "ollama", "gemini")
+    
+    Returns:
+        Estimated token count
+    """
+    if not text: 
+        return 0
+    
+    # Get provider from environment if not passed
+    if provider is None:
+        provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+        
     words = len(text.split())
     chars = len(text)
-    # This is a very rough approximation.
-    # A common heuristic is ~4 chars per token, or use len(text)/2.5 for OpenAI models.
-    # For word-based models, word count might be closer.
-    # Ollama tokenization depends on the specific model.
-    estimated_tokens = words + (chars // 10) # Original formula
-    return estimated_tokens if estimated_tokens > 0 else 1
+    
+    # Different estimation methods based on provider
+    if provider == "gemini":
+        # Gemini tends to use fewer tokens, roughly 100 chars = 25 tokens
+        # This is an approximation, 1 token ≈ 4 chars
+        estimated_tokens = chars // 4
+    elif provider == "ollama":
+        # Ollama tokenization depends on the specific model, using original formula
+        estimated_tokens = words + (chars // 10)
+    else:
+        # Default fallback method
+        # Using a middle ground between character and word-based models
+        estimated_tokens = words + (chars // 6)
+    
+    return max(1, estimated_tokens)
