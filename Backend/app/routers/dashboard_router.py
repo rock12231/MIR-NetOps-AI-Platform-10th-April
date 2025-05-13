@@ -7,14 +7,14 @@ from fastapi import APIRouter, HTTPException
 from qdrant_client.http import models as rest_models
 from qdrant_client.http.models import Filter, FieldCondition, Range
 
-from app.config import qdrant
-from app.models import DashboardRequest
-from app.qdrant_utils import (
+from app.core.config import qdrant
+from app.core.models import DashboardRequest
+from app.utils.qdrant_utils import (
     AVAILABLE_COLLECTIONS,
     DEFAULT_COLLECTION,
     parse_collection_name_backend
 )
-from .analysis_utils import detect_flapping_interfaces, analyze_interface_stability
+from app.utils.analysis_utils import detect_flapping_interfaces, analyze_interface_stability
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Dashboard"])
@@ -111,4 +111,4 @@ async def dashboard_data(request: DashboardRequest):
             "start": str(datetime.fromtimestamp(start_time)) if start_time else None,
             "end": str(datetime.fromtimestamp(end_time)) if end_time else None
         }
-    } 
+    }

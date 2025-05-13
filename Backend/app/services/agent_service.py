@@ -1,8 +1,8 @@
 from typing import List, Dict, Optional
 import logging
 
-from app.config import LLM_MODEL as CFG_LLM_MODEL, llm # Import LLM client and model name
-from app.models import RouterAgentResponse, ChatCompletionResponse # Pydantic models
+from app.core.config import LLM_MODEL as CFG_LLM_MODEL, llm # Import LLM client and model name
+from app.core.models import RouterAgentResponse, ChatCompletionResponse # Pydantic models
 
 logger = logging.getLogger(__name__)
 

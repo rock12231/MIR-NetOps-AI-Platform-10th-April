@@ -1,5 +1,5 @@
 import logging
-from app.config import qdrant # Import the initialized Qdrant client
+from app.core.config import qdrant
 
 logger = logging.getLogger(__name__)
 

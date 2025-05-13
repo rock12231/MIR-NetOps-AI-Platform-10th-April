@@ -16,7 +16,7 @@ services:
       - METADATA_PATH=${METADATA_PATH:-/app/data/qdrant_db_metadata.json}
       - API_BASE_URL=${API_BASE_URL:-http://0.0.0.0:8001}
       - CHAT_API_BASE_URL=${CHAT_API_BASE_URL:-http://172.178.38.117:8001}
-      - PROMPT_FILE_PATH=/app/app/prompt.txt
+      - PROMPT_FILE_PATH=/app/data/prompt.txt
     volumes:
       - ./Backend:/app
       - ./logs:/app/logs

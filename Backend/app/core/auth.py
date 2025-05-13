@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import Security
 from fastapi.security import APIKeyHeader
 
-from app.models import User
+from app.core.models import User
 
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 

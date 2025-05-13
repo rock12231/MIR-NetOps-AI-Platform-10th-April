@@ -8,15 +8,15 @@ from fastapi import APIRouter, HTTPException
 from qdrant_client.http import models as rest_models # Qdrant specific models
 from qdrant_client.http.models import Filter, FieldCondition, Range, OrderBy # Qdrant specific models
 
-from app.config import qdrant, llm, token_logger
-from app.models import AnalyzeLogsRequest, SummaryRequest
-from app.qdrant_utils import (
+from app.core.config import qdrant, llm, token_logger
+from app.core.models import AnalyzeLogsRequest, SummaryRequest
+from app.utils.qdrant_utils import (
     AVAILABLE_COLLECTIONS,
     DEFAULT_COLLECTION,
     parse_collection_name_backend
 )
-from app.llm_utils import load_prompt_template, clean_and_parse_json, count_tokens
-from app.analysis_utils import detect_flapping_interfaces, analyze_interface_stability
+from app.utils.llm_utils import load_prompt_template, clean_and_parse_json, count_tokens
+from app.utils.analysis_utils import detect_flapping_interfaces, analyze_interface_stability
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Network Log Analysis"])

@@ -1,16 +1,32 @@
 import json
 import re
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 def load_prompt_template():
+    prompt_file_path = os.getenv("PROMPT_FILE_PATH", "app/data/prompt.txt") # Default if env var not set
     try:
-        with open("prompt.txt", "r") as file: # Assumes prompt.txt is in the same directory (app/)
+        # Ensure the path is relative to the application root if using default
+        # If PROMPT_FILE_PATH is absolute, os.path.join will handle it.
+        # In Docker, with WORKDIR /app, and files in /app/app/data, this should be:
+        # PROMPT_FILE_PATH=/app/app/data/prompt.txt (set in Dockerfile)
+        # The default "app/data/prompt.txt" would resolve to "/app/app/data/prompt.txt"
+        # if the script is run from /app.
+        
+        # If PROMPT_FILE_PATH is /app/app/data/prompt.txt as set in Dockerfile, it's absolute
+        # and will be used directly.
+        
+        with open(prompt_file_path, "r") as file:
             return file.read()
     except FileNotFoundError:
-        logger.warning("prompt.txt not found. Using default prompt.")
+        logger.error(f"Prompt file not found at: {prompt_file_path}. Using default prompt.")
         return """Analyze the following logs:\n{logs}\nProvide a summary and identify anomalies. Return valid JSON.\nSchema: {model_schema}"""
+    except Exception as e:
+        logger.error(f"Error loading prompt file {prompt_file_path}: {e}. Using default prompt.")
+        return """Analyze the following logs:\n{logs}\nProvide a summary and identify anomalies. Return valid JSON.\nSchema: {model_schema}"""
+
 
 def clean_and_parse_json(raw_text: str):
     if not raw_text or not isinstance(raw_text, str):

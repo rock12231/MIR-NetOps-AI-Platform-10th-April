@@ -2,7 +2,7 @@ import logging
 from typing import Dict
 from fastapi import APIRouter, HTTPException, Request
 
-from app.config import qdrant, llm # Import initialized clients
+from app.core.config import qdrant, llm # Import initialized clients
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["System"])

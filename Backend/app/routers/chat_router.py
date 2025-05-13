@@ -6,12 +6,12 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException
 from loguru import logger as loguru_logger # Specific logger from original for this router
 
-from app.models import (
+from app.core.models import (
     RouterQuery, AgentResponse, ChatCompletionRequest, 
     ChatCompletionResponse, User
 )
-from app.auth import get_current_active_user
-from app.agent_service import RouterAgent # The agent implementation
+from app.core.auth import get_current_active_user
+from app.services.agent_service import RouterAgent # The agent implementation
 
 # Standard logger for general messages in this module
 logger = logging.getLogger(__name__)

@@ -21,9 +21,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger("app") # Root logger for the app module
 
 # Configure file logging for token counts
-os.makedirs("logs", exist_ok=True) # Ensure logs directory exists in /app/logs
+# Path is relative to WORKDIR in Docker, which is /app.
+# So this will create /app/app/logs/token_log.log
+# The Dockerfile creates /app/app/logs to ensure it exists.
+LOGS_DIR = "app/logs" # Path within the container relative to /app
+os.makedirs(LOGS_DIR, exist_ok=True)
 token_logger = logging.getLogger("token_logger")
-token_handler = logging.FileHandler("logs/token_log.log") # Path relative to execution, so app/logs/token_log.log
+token_handler = logging.FileHandler(os.path.join(LOGS_DIR, "token_log.log"))
 token_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 token_logger.addHandler(token_handler)
 token_logger.setLevel(logging.INFO)
