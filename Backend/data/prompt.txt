@@ -50,7 +50,12 @@ Output must be a valid JSON object matching the schema below, with:
 - `locations_analyzed`: Unique location codes.
 - `time_period`: Earliest (`start`) and latest (`end`) timestamps in ISO format, or null if unavailable.
 
-CRITICAL: Respond *only* with the JSON object below. Do not include ```json, text, or other content outside the JSON structure.
+CRITICAL INSTRUCTIONS:
+1. Respond ONLY with a valid JSON object - NO markdown, headings, or explanations.
+2. DO NOT use ```json or ``` or any code blocks.
+3. DO NOT include any text before or after the JSON object.
+4. Ensure your response begins with {{ and ends with }}.
+5. Follow the exact schema below - missing or incorrect keys will cause processing errors.
 
 {model_schema}
 

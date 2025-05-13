@@ -252,9 +252,14 @@ async def generate_summary(request: SummaryRequest):
     logger.debug(f"RID: {request_id} - Raw LLM response:\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)
-    if error_msg or not analysis_json:
+    if error_msg and not analysis_json:
+        # If both error_msg is not None and analysis_json is None, then the parsing completely failed
         logger.error(f"RID: {request_id} - Failed to parse LLM JSON response: {error_msg}. Raw response was: {raw_response_text[:500]}...")
         raise HTTPException(status_code=500, detail=f"LLM response parsing error: {error_msg}")
+    elif error_msg and analysis_json:
+        # If we have both an error_msg and analysis_json, it means we're using a fallback JSON
+        logger.warning(f"RID: {request_id} - Using fallback JSON due to parsing issues: {error_msg}")
+        # We'll continue with the fallback JSON in this case
 
     # Augment analysis with context if needed (e.g., time period from request)
     analysis_json['time_period_requested'] = { # Add the requested time for clarity
@@ -371,9 +376,14 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
     logger.debug(f"RID: {request_id} - Raw LLM response (detailed analysis):\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)
-    if error_msg or not analysis_json:
+    if error_msg and not analysis_json:
+        # If both error_msg is not None and analysis_json is None, then the parsing completely failed
         logger.error(f"RID: {request_id} - Failed to parse LLM JSON response for detailed analysis: {error_msg}. Raw: {raw_response_text[:500]}...")
         raise HTTPException(status_code=500, detail=f"LLM response parsing error for detailed analysis: {error_msg}")
+    elif error_msg and analysis_json:
+        # If we have both an error_msg and analysis_json, it means we're using a fallback JSON
+        logger.warning(f"RID: {request_id} - Using fallback JSON for detailed analysis due to parsing issues: {error_msg}")
+        # We'll continue with the fallback JSON in this case
     
     # The LLM should populate 'time_period' based on log data it sees.
 
