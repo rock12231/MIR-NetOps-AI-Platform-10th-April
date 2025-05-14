@@ -151,12 +151,7 @@ def main():
         # Add welcome message before login form
         st.markdown("""
         ### Welcome to the Network Monitoring Dashboard
-        
         Please log in to access all features of the platform.
-        
-        **Demo Credentials**:
-        - Username: mir
-        - Password: mir123
         """)
         login()
         # The login() function now calls st.rerun() on success,

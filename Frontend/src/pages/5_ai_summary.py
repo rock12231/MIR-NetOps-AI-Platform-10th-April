@@ -9,7 +9,6 @@ from loguru import logger
 from typing import Dict, Any
 import os
 from src.utils.auth import check_auth, init_session_state, logout  # Added logout for sidebar
-from src.utils.qdrant_client import health_check  # Added for system status
 
 # --- Page Configuration --- MUST BE FIRST STREAMLIT COMMAND
 st.set_page_config(
@@ -23,6 +22,27 @@ st.set_page_config(
 init_session_state()  # Initialize session state
 check_auth()
 logger.info(f"User '{st.session_state.username}' accessed AI Summary page.")
+
+# Backend API URL for system health check
+API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
+
+# Function to check health status
+def health_check():
+    """
+    Check system health by calling the health API.
+    
+    Returns:
+        bool: True if system is healthy, False otherwise
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/system/health")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("status") == "healthy"
+        return False
+    except:
+        logger.error("Failed to connect to health check API")
+        return False
 
 # Custom CSS for sidebar styling
 def load_custom_css():
@@ -53,11 +73,9 @@ def load_custom_css():
 load_custom_css()
 
 # --- Configuration ---
-API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
 METADATA_PATH = os.getenv('METADATA_PATH', 'data/qdrant_db_metadata.json')
 CACHE_TTL = int(os.getenv('CACHE_TTL', '300'))
 API_TIMEOUT = 180
-
 
 # --- Metadata Loading ---
 @st.cache_data(ttl=CACHE_TTL)
@@ -154,23 +172,6 @@ def call_api(endpoint: str, payload: dict) -> dict:
     except Exception as e:
         logger.error(f"Unexpected error during API call to {url}: {e}", exc_info=True)
         return {"status": "error", "message": f"Unexpected Error: {e}"}
-
-
-def system_health_check():
-    url = f"{API_BASE_URL}/system/health"
-    try:
-        response = requests.get(url, timeout=API_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("status") == "healthy":
-            logger.info("API system health check passed.")
-            return True
-        else:
-            logger.warning(f"API system health check failed: {data.get('status')}")
-            return False
-    except requests.exceptions.HTTPError as http_err:
-        logger.error(f"API health check HTTP error: {http_err}")
-        return False
 
 # --- Function to Display API Analysis Results ---
 # ... (keep the existing display_api_analysis function - no changes needed here) ...
@@ -633,7 +634,7 @@ def main():
     # This check will run when the page loads or after Reset
     if 'api_healthy' not in st.session_state:
         with st.spinner("Checking API status..."):
-            st.session_state['api_healthy'] = system_health_check() # Call the function from Main.py
+            st.session_state['api_healthy'] = health_check() # Call the function from Main.py
             logger.info(f"API Health Check Result: {st.session_state['api_healthy']}")
 
     # Render sidebar - this now uses the session state for disabling

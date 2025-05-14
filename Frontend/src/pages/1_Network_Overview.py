@@ -11,15 +11,81 @@ from datetime import datetime, timedelta
 from loguru import logger
 import requests
 import json
+import os
 
 # Import utilities
-from src.utils.qdrant_client import load_metadata, health_check  # Added health_check for sidebar
+# Removed: from src.utils.qdrant_client import load_metadata, health_check
 from src.utils.data_processing import categorize_interface_events, calculate_network_health, analyze_device_distribution, create_location_health_matrix
 from src.utils.visualization import COLOR_SCALES, create_network_topology_map, create_event_trend_chart, create_location_heatmap
 from src.utils.auth import check_auth, init_session_state
 
 # Backend API URL
 BACKEND_URL = "http://backend-api:8001"  # Update this with your actual backend URL
+
+# --- Added new metadata loading code ---
+METADATA_PATH = os.getenv('METADATA_PATH', 'data/qdrant_db_metadata.json')
+CACHE_TTL = int(os.getenv('CACHE_TTL', '300'))
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_metadata():
+    """
+    Load metadata about collections with error handling.
+    
+    Returns:
+        dict: Metadata dictionary with collections and device information
+    """
+    try:
+        if os.path.exists(METADATA_PATH):
+            with open(METADATA_PATH, 'r') as f:
+                metadata = json.load(f)
+                # Validate metadata structure
+                required_keys = ["collections", "agw", "dgw", "fw", "vadc"]
+                if not all(key in metadata for key in required_keys):
+                    logger.error("Invalid metadata structure. Missing required keys.")
+                    return get_default_metadata()
+                return metadata
+        else:
+            logger.warning(f"Metadata file {METADATA_PATH} not found. Using default configuration.")
+            return get_default_metadata()
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing metadata file: {str(e)}")
+        return get_default_metadata()
+    except Exception as e:
+        logger.error(f"Error loading metadata: {str(e)}")
+        return get_default_metadata()
+
+def get_default_metadata():
+    """
+    Return default metadata structure.
+    
+    Returns:
+        dict: Default metadata
+    """
+    return {
+        "collections": [],
+        "agw": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": []},
+        "dgw": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": []},
+        "fw": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": [], "processes": []},
+        "vadc": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": []}
+    }
+
+# Function to check health status
+def health_check():
+    """
+    Check system health by calling the health API.
+    
+    Returns:
+        bool: True if system is healthy, False otherwise
+    """
+    try:
+        response = requests.get(f"{BACKEND_URL}/system/health")
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("status") == "healthy"
+        return False
+    except:
+        logger.error("Failed to connect to health check API")
+        return False
 
 # --- Authentication Check ---
 init_session_state()  # Initialize session state
