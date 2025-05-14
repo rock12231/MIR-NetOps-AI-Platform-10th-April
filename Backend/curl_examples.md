@@ -58,6 +58,43 @@ curl -X GET "http://localhost:8001/api/v1/devices/device_data?collection_name=ro
 curl -X GET "http://localhost:8001/api/v1/devices/interface_data?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59&device_type=agw"
 ```
 
+## Interface Monitoring API
+
+### Get Interface Collections
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/collections?device_type=agw"
+```
+
+### Get Interface Data
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/interface_data?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59"
+```
+
+### Get Interface Data with Filters
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/interface_data?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59&device=agw66&location=ym&interface=Ethernet3/29"
+```
+
+### Detect Flapping Interfaces
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/detect_flapping?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59&time_threshold_minutes=30&min_transitions=3"
+```
+
+### Analyze Interface Stability
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/analyze_stability?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59&time_window_hours=24"
+```
+
+### Get Interface Metrics
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/interface_metrics?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59&time_window_hours=24"
+```
+
+### Categorize Interface Events
+```bash
+curl -X GET "http://localhost:8001/api/v1/interfaces/categorize_events?start_time=2023-06-01T00:00:00&end_time=2023-06-02T23:59:59"
+```
+
 ## AI Summary API
 
 ### Generate Summary

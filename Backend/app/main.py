@@ -18,6 +18,7 @@ from app.routers.system_router import router as system_router
 from app.routers.ai_summary_router import router as ai_summary_router
 from app.routers.network_overview_router import router as network_overview_router
 from app.routers.devices_dashboard_router import router as devices_dashboard_router
+from app.routers.interface_monitoring_router import router as interface_monitoring_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -59,6 +60,7 @@ app.include_router(system_router)
 app.include_router(ai_summary_router)
 app.include_router(network_overview_router)
 app.include_router(devices_dashboard_router)
+app.include_router(interface_monitoring_router)
 
 # Root endpoint
 @app.get("/")
@@ -76,7 +78,8 @@ async def root():
             "network": "/api/v1/network/aggregated_data",
             "metadata": "/api/v1/network/metadata",
             "devices": "/api/v1/devices/device_data",
-            "interfaces": "/api/v1/devices/interface_data"
+            "interfaces": "/api/v1/devices/interface_data",
+            "interface_monitoring": "/api/v1/interfaces/interface_data"
         }
     }
 

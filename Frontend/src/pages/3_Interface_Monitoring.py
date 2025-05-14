@@ -12,9 +12,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from loguru import logger
+import requests
 
 # Updated imports for src directory structure
-from src.utils.qdrant_client import get_qdrant_client, load_metadata, fetch_data, fetch_all_interface_data
+from src.utils.qdrant_client import load_metadata  # Keep this for sidebar
 from src.utils.data_processing import (
     detect_flapping_interfaces, 
     analyze_interface_stability,
@@ -30,8 +31,10 @@ from src.utils.visualization import (
     create_interface_heatmap,
     create_interface_metrics_cards
 )
-from src.utils.auth import check_auth 
+from src.utils.auth import check_auth
 
+# Backend API URL
+BACKEND_URL = "http://backend-api:8001" # Changed from backend-api:8001 to localhost:8001
 
 # Configure page
 st.set_page_config(
@@ -51,6 +54,32 @@ logger.info("Loading Interface Monitoring Component")
 # Global variables
 metadata = load_metadata()
 
+# Function to call backend API
+def call_api(endpoint, params=None):
+    """
+    Call the backend API and handle errors.
+    
+    Args:
+        endpoint (str): API endpoint path (without base URL)
+        params (dict, optional): Query parameters
+        
+    Returns:
+        dict or None: API response or None on error
+    """
+    try:
+        url = f"{BACKEND_URL}{endpoint}"
+        logger.info(f"Calling API: {url} with params: {params}")
+        response = requests.get(url, params=params)
+        logger.info(f"API Response Status: {response.status_code}")
+        response.raise_for_status()  # Raise exception for 4XX/5XX responses
+        data = response.json()
+        logger.info(f"API Response Data: {data}")
+        return data
+    except requests.RequestException as e:
+        st.error(f"API Error: {str(e)}")
+        logger.error(f"API Error ({endpoint}): {str(e)}")
+        return None
+
 # Function to add explanatory tooltips
 def add_tooltip(text, tooltip):
     return f"{text} ℹ️" if tooltip else text
@@ -67,6 +96,7 @@ def render_sidebar_controls():
         "Last 24 hours": timedelta(hours=24),
         "Last 3 days": timedelta(days=3),
         "Last 7 days": timedelta(days=7),
+        "Last 30 days": timedelta(days=30),  # Adding a longer option
         "Custom": None
     }
     
@@ -174,10 +204,10 @@ def render_sidebar_controls():
         "all_interfaces": interfaces
     }
 
-# Function to load interface data
-def load_interface_data(filters):
+# Function to load interface data from API
+def load_interface_data_from_api(filters):
     """
-    Load interface data based on selected filters.
+    Load interface data based on selected filters using the API.
     
     Args:
         filters (dict): Dictionary of filter parameters
@@ -187,42 +217,41 @@ def load_interface_data(filters):
     """
     with st.spinner("Loading interface data..."):
         try:
-            # Determine the collection name if specific device/location selected
-            if filters["device"] and filters["location"]:
-                collection_name = f"router_{filters['device']}_{filters['location']}_log_vector"
-                logger.info(f"Fetching data from collection: {collection_name}")
-                df = fetch_data(
-                    collection_name=collection_name,
-                    start_time=filters["start_time"],
-                    end_time=filters["end_time"],
-                    limit=10000,  # Higher limit for comprehensive analysis
-                    device=filters["device"],
-                    location=filters["location"],
-                    category="ETHPORT",  # Focus on interface events
-                    interface=filters["interface"]
-                )
-            else:
-                # Fetch from all relevant collections
-                logger.info(f"Fetching interface data across all collections")
-                df = fetch_all_interface_data(
-                    start_time=filters["start_time"],
-                    end_time=filters["end_time"],
-                    total_limit=10000  # Higher limit for comprehensive analysis
-                )
-                
-                # Apply additional filtering if needed
-                if filters["device"]:
-                    df = df[df["device"] == filters["device"]]
-                if filters["location"]:
-                    df = df[df["location"] == filters["location"]]
-                if filters["interface"]:
-                    df = df[df["interface"] == filters["interface"]]
+            # Prepare API call parameters
+            params = {
+                "start_time": filters["start_time"].isoformat(),
+                "end_time": filters["end_time"].isoformat(),
+                "total_limit": 10000  # Higher limit for comprehensive analysis
+            }
             
-            if df.empty:
+            # Add optional filters if specified
+            if filters["device"]:
+                params["device"] = filters["device"]
+            if filters["location"]:
+                params["location"] = filters["location"]
+            if filters["interface"]:
+                params["interface"] = filters["interface"]
+            
+            # Make API call to get interface data
+            response = call_api("/api/v1/interfaces/interface_data", params)
+            
+            if not response:
                 logger.warning("No interface data found with the specified filters")
                 return None
                 
+            if "data" not in response or not response["data"]:
+                logger.warning("No interface data found with the specified filters")
+                return None
+                
+            # Convert to DataFrame
+            df = pd.DataFrame(response["data"])
+            
+            # Convert timestamp to datetime if present
+            if 'timestamp' in df.columns:
+                df['timestamp_dt'] = pd.to_datetime(df['timestamp'], unit='s')
+            
             # Categorize events for better analysis
+            # We could call the categorize_events API, but it's faster to do it locally
             df = categorize_interface_events(df)
             logger.info(f"Loaded {len(df)} interface events")
             
@@ -247,7 +276,7 @@ def main():
         # Show spinner during loading
         with st.spinner("Loading and processing interface data..."):
             # Load data and store in session state
-            df = load_interface_data(filters)
+            df = load_interface_data_from_api(filters)
             
             if df is not None and not df.empty:
                 st.session_state["interface_data"] = df
@@ -274,7 +303,75 @@ def main():
         
         # Calculate interface metrics
         with st.spinner("Calculating interface metrics..."):
-            metrics = calculate_interface_metrics(df, current_filters["stability_window_hours"])
+            # Option 1: Calculate metrics using the API
+            params = {
+                "start_time": current_filters["start_time"].isoformat(),
+                "end_time": current_filters["end_time"].isoformat(),
+                "time_window_hours": int(current_filters["stability_window_hours"])  # Ensure it's an int
+            }
+            
+            # Add optional filters if specified
+            if current_filters["device"]:
+                params["device"] = str(current_filters["device"])  # Ensure it's a string
+            if current_filters["location"]:
+                params["location"] = str(current_filters["location"])  # Ensure it's a string
+            
+            # Call API to get metrics
+            logger.info(f"Calling interface_metrics API with params: {params}")
+            metrics_response = call_api("/api/v1/interfaces/interface_metrics", params)
+            
+            if metrics_response:
+                # Check if the response has the expected format
+                required_metrics = ['total_interfaces', 'down_interfaces', 'flapping_interfaces', 'status_changes']
+                if all(metric in metrics_response for metric in required_metrics):
+                    metrics = metrics_response
+                else:
+                    # Response is missing some required metrics
+                    logger.warning(f"API response missing required metrics: {metrics_response}")
+                    metrics = {
+                        'total_interfaces': metrics_response.get('total_interfaces', 0),
+                        'down_interfaces': metrics_response.get('down_interfaces', 0),
+                        'flapping_interfaces': metrics_response.get('flapping_interfaces', 0),
+                        'status_changes': metrics_response.get('status_changes', 0),
+                        'config_changes': metrics_response.get('config_changes', 0)
+                    }
+            else:
+                # No valid response, create default metrics
+                logger.warning("No metrics response from API, using default values")
+                metrics = {
+                    'total_interfaces': 0,
+                    'down_interfaces': 0,
+                    'flapping_interfaces': 0,
+                    'status_changes': 0,
+                    'config_changes': 0
+                }
+                
+                # Try to calculate locally if we have data
+                if 'df' in locals() and df is not None and not df.empty:
+                    try:
+                        local_metrics = calculate_interface_metrics(df, current_filters["stability_window_hours"])
+                        metrics.update(local_metrics)
+                    except Exception as e:
+                        logger.error(f"Error calculating local metrics: {str(e)}")
+            
+            # Display debug info 
+            st.sidebar.markdown("### Debug Info")
+            if st.sidebar.checkbox("Show API Response", value=False):
+                st.sidebar.json(metrics_response)
+                
+            if st.sidebar.checkbox("Show Processed Metrics", value=False):
+                st.sidebar.json(metrics)
+            
+            # Add test preset option
+            if st.sidebar.checkbox("Enable Test Data", value=False):
+                st.sidebar.info("Using test data instead of API values")
+                metrics = {
+                    'total_interfaces': 24,
+                    'down_interfaces': 3,
+                    'flapping_interfaces': 2,
+                    'status_changes': 47,
+                    'config_changes': 8
+                }
         
         # Display metrics cards with tooltips
         st.subheader("Interface Health Dashboard")
@@ -344,7 +441,7 @@ def main():
                 }
             ))
             fig.update_layout(height=250)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="health_gauge")
         
         with col2:
             # Create a donut chart showing status distribution
@@ -374,7 +471,7 @@ def main():
                 title_text="Interface Status Distribution",
                 height=250
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="status_donut")
         
         # Create tabs for different analysis views
         tab1, tab2, tab3, tab4 = st.tabs([
@@ -416,7 +513,7 @@ def main():
             # Create timeline visualization
             with st.spinner("Creating interface timeline..."):
                 timeline_chart = create_interface_timeline(timeline_df)
-                st.plotly_chart(timeline_chart, use_container_width=True)
+                st.plotly_chart(timeline_chart, use_container_width=True, key="timeline_chart")
             
             # Create heatmap of interface activity
             st.subheader("Interface Activity Heatmap")
@@ -425,7 +522,7 @@ def main():
             if len(df) > 20:
                 with st.spinner("Creating interface heatmap..."):
                     heatmap = create_interface_heatmap(df)
-                    st.plotly_chart(heatmap, use_container_width=True)
+                    st.plotly_chart(heatmap, use_container_width=True, key="interface_heatmap")
             else:
                 st.info("Not enough data to generate interface activity heatmap.")
         
@@ -436,18 +533,42 @@ def main():
             hardware issues, connectivity problems, or configuration errors.
             """)
             
-            # Detect flapping interfaces
+            # Detect flapping interfaces using API
             with st.spinner("Detecting flapping interfaces..."):
-                flapping_df = detect_flapping_interfaces(
-                    df, 
-                    time_threshold_minutes=current_filters["time_threshold"],
-                    min_transitions=current_filters["min_transitions"]
-                )
+                # Prepare API call parameters
+                params = {
+                    "start_time": current_filters["start_time"].isoformat(),
+                    "end_time": current_filters["end_time"].isoformat(),
+                    "time_threshold_minutes": current_filters["time_threshold"],
+                    "min_transitions": current_filters["min_transitions"]
+                }
+                
+                # Add optional filters if specified
+                if current_filters["device"]:
+                    params["device"] = current_filters["device"]
+                if current_filters["location"]:
+                    params["location"] = current_filters["location"]
+                if current_filters["interface"]:
+                    params["interface"] = current_filters["interface"]
+                
+                # Call API to detect flapping interfaces
+                flapping_response = call_api("/api/v1/interfaces/detect_flapping", params)
+                
+                if flapping_response and "data" in flapping_response:
+                    flapping_interfaces = flapping_response["data"]
+                    flapping_df = pd.DataFrame(flapping_interfaces) if flapping_interfaces else pd.DataFrame()
+                else:
+                    # Fallback to local calculation
+                    flapping_df = detect_flapping_interfaces(
+                        df, 
+                        time_threshold_minutes=current_filters["time_threshold"],
+                        min_transitions=current_filters["min_transitions"]
+                    )
             
             if not flapping_df.empty:
                 # Show flapping interfaces chart
                 flapping_chart = create_flapping_interfaces_chart(flapping_df)
-                st.plotly_chart(flapping_chart, use_container_width=True)
+                st.plotly_chart(flapping_chart, use_container_width=True, key="flapping_chart")
                 
                 # Format dataframe for display
                 display_df = flapping_df[['device', 'location', 'interface', 
@@ -459,7 +580,9 @@ def main():
                     'first_event': 'First Event',
                     'last_event': 'Last Event'
                 })
-                display_df['Duration (min)'] = display_df['Duration (min)'].round(2)
+                if 'Duration (min)' in display_df.columns:
+                    if isinstance(display_df['Duration (min)'].iloc[0], float):
+                        display_df['Duration (min)'] = display_df['Duration (min)'].round(2)
                 
                 # Display table
                 st.subheader("Flapping Interfaces Details")
@@ -495,14 +618,37 @@ def main():
             and configuration changes. Lower stability scores indicate potentially problematic interfaces.
             """)
             
-            # Calculate stability metrics
+            # Calculate stability metrics using API
             with st.spinner("Analyzing interface stability..."):
-                stability_df = analyze_interface_stability(df, current_filters["stability_window_hours"])
+                # Prepare API call parameters
+                params = {
+                    "start_time": current_filters["start_time"].isoformat(),
+                    "end_time": current_filters["end_time"].isoformat(),
+                    "time_window_hours": current_filters["stability_window_hours"]
+                }
+                
+                # Add optional filters if specified
+                if current_filters["device"]:
+                    params["device"] = current_filters["device"]
+                if current_filters["location"]:
+                    params["location"] = current_filters["location"]
+                if current_filters["interface"]:
+                    params["interface"] = current_filters["interface"]
+                
+                # Call API to analyze interface stability
+                stability_response = call_api("/api/v1/interfaces/analyze_stability", params)
+                
+                if stability_response and "data" in stability_response:
+                    stability_metrics = stability_response["data"]
+                    stability_df = pd.DataFrame(stability_metrics) if stability_metrics else pd.DataFrame()
+                else:
+                    # Fallback to local calculation
+                    stability_df = analyze_interface_stability(df, current_filters["stability_window_hours"])
             
             if not stability_df.empty:
                 # Show stability scores chart
                 stability_chart = create_stability_chart(stability_df)
-                st.plotly_chart(stability_chart, use_container_width=True)
+                st.plotly_chart(stability_chart, use_container_width=True, key="stability_chart")
                 
                 # Display detailed stability metrics
                 st.subheader("Interface Stability Details")
@@ -518,8 +664,14 @@ def main():
                     'down_events': 'Down Events',
                     'event_frequency': 'Events/Hour'
                 })
-                display_df['Events/Hour'] = display_df['Events/Hour'].round(2)
-                display_df['Stability Score'] = display_df['Stability Score'].round(1)
+                
+                if 'Events/Hour' in display_df.columns:
+                    if isinstance(display_df['Events/Hour'].iloc[0], float):
+                        display_df['Events/Hour'] = display_df['Events/Hour'].round(2)
+                
+                if 'Stability Score' in display_df.columns:
+                    if isinstance(display_df['Stability Score'].iloc[0], float):
+                        display_df['Stability Score'] = display_df['Stability Score'].round(1)
                 
                 # Sort by stability score (ascending)
                 display_df = display_df.sort_values('Stability Score')
@@ -555,7 +707,7 @@ def main():
                 # Event distribution chart
                 st.subheader("Event Type Distribution")
                 distribution_chart = create_event_distribution_chart(df)
-                st.plotly_chart(distribution_chart, use_container_width=True)
+                st.plotly_chart(distribution_chart, use_container_width=True, key="distribution_chart")
             else:
                 st.info("Insufficient data for stability analysis.")
         
@@ -599,20 +751,65 @@ def main():
                     
                     # Get flapping status
                     with st.spinner("Analyzing flapping status..."):
-                        flapping_df = detect_flapping_interfaces(
-                            interface_data, 
-                            time_threshold_minutes=current_filters["time_threshold"],
-                            min_transitions=current_filters["min_transitions"]
-                        )
+                        # Prepare API call parameters for flapping detection
+                        params = {
+                            "start_time": current_filters["start_time"].isoformat(),
+                            "end_time": current_filters["end_time"].isoformat(),
+                            "interface": selected_detail_interface,
+                            "time_threshold_minutes": current_filters["time_threshold"],
+                            "min_transitions": current_filters["min_transitions"]
+                        }
+                        
+                        # Add optional filters if specified
+                        if current_filters["device"]:
+                            params["device"] = current_filters["device"]
+                        if current_filters["location"]:
+                            params["location"] = current_filters["location"]
+                        
+                        # Call API to detect flapping
+                        flapping_response = call_api("/api/v1/interfaces/detect_flapping", params)
+                        
+                        if flapping_response and "data" in flapping_response:
+                            is_flapping = len(flapping_response["data"]) > 0
+                        else:
+                            # Fallback to local detection
+                            flapping_df = detect_flapping_interfaces(
+                                interface_data, 
+                                time_threshold_minutes=current_filters["time_threshold"],
+                                min_transitions=current_filters["min_transitions"]
+                            )
+                            is_flapping = not flapping_df.empty
                     
                     # Get stability metrics for this interface
                     with st.spinner("Calculating stability metrics..."):
-                        stability_df = analyze_interface_stability(interface_data, current_filters["stability_window_hours"])
-                        stability_score = stability_df['stability_score'].iloc[0] if not stability_df.empty else None
+                        # Prepare API call parameters for stability analysis
+                        params = {
+                            "start_time": current_filters["start_time"].isoformat(),
+                            "end_time": current_filters["end_time"].isoformat(),
+                            "interface": selected_detail_interface,
+                            "time_window_hours": current_filters["stability_window_hours"]
+                        }
+                        
+                        # Add optional filters if specified
+                        if current_filters["device"]:
+                            params["device"] = current_filters["device"]
+                        if current_filters["location"]:
+                            params["location"] = current_filters["location"]
+                        
+                        # Call API to analyze stability
+                        stability_response = call_api("/api/v1/interfaces/analyze_stability", params)
+                        
+                        if stability_response and "data" in stability_response and stability_response["data"]:
+                            stability_df = pd.DataFrame(stability_response["data"])
+                            stability_score = stability_df['stability_score'].iloc[0] if not stability_df.empty else None
+                        else:
+                            # Fallback to local calculation
+                            stability_df = analyze_interface_stability(interface_data, current_filters["stability_window_hours"])
+                            stability_score = stability_df['stability_score'].iloc[0] if not stability_df.empty else None
                     
                     # Interface status
                     status = "Stable"
-                    if not flapping_df.empty:
+                    if is_flapping:
                         status = "⚠️ FLAPPING"
                     elif stability_score is not None and stability_score < 50:
                         status = "⚠️ UNSTABLE"
@@ -630,7 +827,7 @@ def main():
                     # Timeline for this interface
                     st.subheader("Event Timeline")
                     timeline_chart = create_interface_timeline(interface_data)
-                    st.plotly_chart(timeline_chart, use_container_width=True)
+                    st.plotly_chart(timeline_chart, use_container_width=True, key=f"timeline_{selected_detail_interface}")
                     
                     # Show raw events
                     st.subheader("Event Log")
