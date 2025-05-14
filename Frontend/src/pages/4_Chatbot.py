@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from loguru import logger
 # Import necessary functions from auth module
 from src.utils.auth import init_session_state, check_auth, logout
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -32,6 +33,76 @@ check_auth() # Check if user is logged in (using the backend token now), stops e
 # Log page access after successful auth check
 # Use get method for safety in case username isn't set for some reason
 logger.info(f"User '{st.session_state.get('username', 'Unknown')}' accessed Chatbot page.")
+
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .api-status-container {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #0f52ba;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
+
+# Function to check API health
+def check_api_health():
+    health_endpoint = f"{API_BASE_URL}/api/health"
+    try:
+        logger.info(f"Performing health check on {health_endpoint}")
+        response = requests.get(health_endpoint, timeout=10)
+        if response.status_code == 200:
+            try:
+                health_data = response.json()
+                # st.session_state['api_health'] = health_data
+                # st.session_state['api_health_status'] = True
+                logger.info(f"Health check successful: {health_data}")
+                return True, health_data
+            except json.JSONDecodeError:
+                # st.session_state['api_health_status'] = False
+                logger.warning(f"Health check response not JSON: {response.text}")
+                return False, {"status": "error", "message": "Invalid response format"}
+        else:
+            # st.session_state['api_health_status'] = False
+            logger.error(f"Health check failed ({response.status_code}): {response.text}")
+            return False, {"status": "error", "message": f"API returned status {response.status_code}"}
+    except requests.exceptions.Timeout:
+        # st.session_state['api_health_status'] = False
+        logger.error("Health check timed out.")
+        return False, {"status": "error", "message": "Connection timeout"}
+    except requests.exceptions.ConnectionError:
+        # st.session_state['api_health_status'] = False
+        logger.error(f"Health check connection error to {API_BASE_URL}.")
+        return False, {"status": "error", "message": "Connection error"}
+    except Exception as e:
+        # st.session_state['api_health_status'] = False
+        logger.exception("Unexpected error during health check:")
+        return False, {"status": "error", "message": f"Error: {str(e)}"}
 
 # Function to parse collections from metadata file
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -349,104 +420,105 @@ def chat_interface():
         st.rerun()
 
 # --- Sidebar Setup ---
-with st.sidebar:
-    st.subheader("Chat Options & Context")
-    st.markdown("Filter the context provided to the AI for more targeted answers.")
-
-    # Load metadata for filters
-    network_meta = extract_network_metadata() # Renamed for clarity
-
-    # Location Filter
-    location_options = ["All Locations"] + network_meta.get("locations", [])
-    selected_location = st.selectbox(
-        "Filter by Location",
-        options=location_options,
-        index=0, # Default to "All Locations"
-        key="selected_location", # Key used to store selection in session state
-        help="Limit the AI's focus to a specific location."
-    )
-
-    # Device Filter (dynamically updated based on location)
-    device_options = ["All Devices"] # Start with default
-    if selected_location != "All Locations":
-        # Get devices valid for the selected location
-        valid_devices = network_meta.get("location_devices", {}).get(selected_location, [])
-        device_options.extend(valid_devices)
-        # Reset device selection if the current one becomes invalid
-        current_device_selection = st.session_state.get("selected_device", "All Devices")
-        if current_device_selection not in device_options:
-            st.session_state.selected_device = "All Devices"
-            logger.debug(f"Resetting device filter as '{current_device_selection}' is not valid for location '{selected_location}'.")
-    else:
-        # Show all devices if "All Locations" is selected
-        device_options.extend(network_meta.get("devices", []))
-
-    selected_device = st.selectbox(
-        "Filter by Device",
-        options=device_options,
-        # Try to preserve selection if it's still valid in the options list
-        index=device_options.index(st.session_state.get("selected_device", "All Devices")) if st.session_state.get("selected_device") in device_options else 0,
-        key="selected_device", # Key used to store selection in session state
-        help="Limit the AI's focus to a specific device."
-    )
-
-    st.markdown("---")
-
-    # Chat Actions
-    if st.button("Clear Chat History", key="clear_chat"):
-        st.session_state["messages"] = []
-        st.session_state.pop("welcome_shown", None) # Remove flag to show welcome message again
-        logger.info("Chat history cleared by user.")
-        st.rerun() # Rerun to reflect the cleared history
-
-    # --- System Status / Health Check ---
-    st.markdown("---")
-    st.subheader("System Status")
-    if st.button("Check Backend API Health", key="check_api_health"):
-        # Assuming a general health endpoint exists at the base URL
-        health_endpoint = f"{API_BASE_URL}/api/health"
+def render_sidebar():
+    with st.sidebar:
+        # User Profile Section
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        st.header("👤 User Profile")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Username:** {st.session_state.username}
+        
+        **Role:** Network Administrator
+        
+        **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+        """)
+        
+        st.markdown("---")
+        
+        # API Health Status
+        st.header("🔄 System Status")
+        
+        # Check API health
         with st.spinner("Checking API health..."):
-            try:
-                logger.info(f"Performing health check on {health_endpoint}")
-                response = requests.get(health_endpoint, timeout=10)
-                if response.status_code == 200:
-                    st.success("Backend API is online ✅")
-                    try:
-                         # Display JSON response if available
-                         st.json(response.json())
-                         logger.info(f"Health check successful: {response.json()}")
-                    except json.JSONDecodeError:
-                         st.info("API online, but health response was not valid JSON.")
-                         logger.warning(f"Health check successful but response not JSON: {response.text}")
-                else:
-                    st.error(f"Backend API check failed (Status: {response.status_code}) ❌")
-                    st.text(f"Response: {response.text}")
-                    logger.error(f"Health check failed ({response.status_code}): {response.text}")
-            except requests.exceptions.Timeout:
-                 st.error("API health check timed out ❌")
-                 logger.error("Health check timed out.")
-            except requests.exceptions.ConnectionError:
-                 st.error(f"Connection Error: Could not reach API at {API_BASE_URL} ❌")
-                 logger.error(f"Health check connection error to {API_BASE_URL}.")
-            except Exception as e:
-                st.error(f"Error during health check: {e} ❌")
-                logger.exception("Unexpected error during health check:")
+            health_status, health_data = check_api_health()
+            
+        # Display API health status
+        if health_status:
+            st.markdown('<span class="status-success">✅ Backend API is online and healthy</span> - Ready to process your queries.', unsafe_allow_html=True)
+        else:
+            error_msg = health_data.get("message", "Unknown error")
+            st.markdown(f'<span class="status-error">❌ Backend API connection issue</span> - {error_msg}. Chat functionality may be limited.', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Chat Options & Context
+        st.header("🔍 Chat Options & Context")
+        st.markdown("Filter the context provided to the AI for more targeted answers.")
 
-    # --- User/Logout Section ---
-    st.markdown("---")
-    st.subheader("User")
-    # Safely display username
-    username = st.session_state.get('username', 'N/A')
-    st.write(f"👤 Logged in as: **{username}**")
-    if st.button("Logout", key="logout_chat"):
-        logout() # Call logout function from auth module
+        # Load metadata for filters
+        with st.spinner("Loading metadata..."):
+            network_meta = extract_network_metadata() # Renamed for clarity
+            st.success("Metadata loaded successfully!")
 
-    st.markdown("---")
-    st.caption("NetOps AI Chatbot v1.2")
+        # Location Filter
+        location_options = ["All Locations"] + network_meta.get("locations", [])
+        selected_location = st.selectbox(
+            "Filter by Location",
+            options=location_options,
+            index=0, # Default to "All Locations"
+            key="selected_location", # Key used to store selection in session state
+            help="Limit the AI's focus to a specific location."
+        )
+
+        # Device Filter (dynamically updated based on location)
+        device_options = ["All Devices"] # Start with default
+        if selected_location != "All Locations":
+            # Get devices valid for the selected location
+            valid_devices = network_meta.get("location_devices", {}).get(selected_location, [])
+            device_options.extend(valid_devices)
+            # Reset device selection if the current one becomes invalid
+            current_device_selection = st.session_state.get("selected_device", "All Devices")
+            if current_device_selection not in device_options:
+                st.session_state.selected_device = "All Devices"
+                logger.debug(f"Resetting device filter as '{current_device_selection}' is not valid for location '{selected_location}'.")
+        else:
+            # Show all devices if "All Locations" is selected
+            device_options.extend(network_meta.get("devices", []))
+
+        selected_device = st.selectbox(
+            "Filter by Device",
+            options=device_options,
+            # Try to preserve selection if it's still valid in the options list
+            index=device_options.index(st.session_state.get("selected_device", "All Devices")) if st.session_state.get("selected_device") in device_options else 0,
+            key="selected_device", # Key used to store selection in session state
+            help="Limit the AI's focus to a specific device."
+        )
+
+        st.markdown("---")
+
+        # Chat Actions
+        st.header("💬 Chat Actions")
+        if st.button("Clear Chat History", key="clear_chat", type="primary"):
+            st.session_state["messages"] = []
+            st.session_state.pop("welcome_shown", None) # Remove flag to show welcome message again
+            logger.info("Chat history cleared by user.")
+            st.rerun() # Rerun to reflect the cleared history
+
+        # Logout button
+        st.markdown("---")
+        if st.button("🚪 Logout", type="primary"):
+            logout() # Call logout function from auth module
+            
+        st.caption("© 2023 MIR Networks")
 
 # --- Main Page Content ---
 st.title("🤖 AI Chatbot Interface")
 st.markdown("Interact with the NetOps AI to analyze network logs and events.")
+
+# Render the sidebar
+render_sidebar()
 
 # Display the chat interface elements
 chat_interface()
