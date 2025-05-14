@@ -1,7 +1,6 @@
 # --- START OF FILE 4_Chatbot.py ---
 
 import streamlit as st
-import requests
 import os
 import json
 from typing import List, Tuple
@@ -10,11 +9,11 @@ from dotenv import load_dotenv
 from loguru import logger
 # Import necessary functions from auth module
 from src.utils.auth import init_session_state, check_auth, logout
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
-# Use a consistent variable name and ensure it points to your backend
-API_BASE_URL = os.getenv("CHAT_API_BASE_URL", "http://backend:8001")
+# Path to metadata
 METADATA_PATH = os.getenv("METADATA_PATH", "/app/data/qdrant_db_metadata.json")
 
 # --- Page Configuration --- MUST BE FIRST STREAMLIT COMMAND
@@ -223,7 +222,6 @@ def chat_interface():
                         else:
                             st.info("No valid log sources found in the response.")
 
-
     # Accept user input via chat input widget
     user_input = st.chat_input("Ask about your network...")
 
@@ -232,113 +230,64 @@ def chat_interface():
         selected_device = st.session_state.get("selected_device", "All Devices")
         selected_location = st.session_state.get("selected_location", "All Locations")
 
-        # Construct context string for the backend if filters are applied
+        # Construct context string for display purposes
         context_parts = []
         if selected_device != "All Devices":
-            context_parts.append(f"Device='{selected_device}'") # Use quotes for clarity
+            context_parts.append(f"Device='{selected_device}'") 
         if selected_location != "All Locations":
             context_parts.append(f"Location='{selected_location}'")
-
-        # Prepend context to the query sent to the backend
-        if context_parts:
-            context_str = " ".join(context_parts)
-            enhanced_query = f"Context: ({context_str}) User Query: {user_input}"
-            logger.info(f"Sending query with context: {enhanced_query}")
-        else:
-            enhanced_query = user_input # Send original query if no filters
-            logger.info(f"Sending query without context: {user_input}")
 
         # Add the user's original message to chat history
         st.session_state["messages"].append({"role": "user", "content": user_input})
 
-        # Display user message immediately (Streamlit's chat_message handles this)
+        # Display user message immediately
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # --- Call the Backend Chat API ---
+        # --- Generate Mock Response (since backend API is not available) ---
         with st.spinner("🧠 NetOps AI is processing your request..."):
             try:
-                # Get the authentication token from session state
-                # This token was obtained during login via the backend's /token endpoint
-                auth_header = None
-                if st.session_state.get("logged_in") and st.session_state.get("token"):
-                     auth_header = {"Authorization": f"Bearer {st.session_state['token']}"}
-                else:
-                     # This should technically be caught by check_auth(), but good to double-check
-                     logger.error("Authentication token missing in session state during API call.")
-                     st.error("Authentication error. Please log out and log back in.")
-                     st.stop() # Stop execution if token is missing
+                # Add context info to the user message for display
+                context_info = f" (Context: {' '.join(context_parts)})" if context_parts else ""
+                
+                # Generate mock response based on query
+                mock_response = generate_mock_response(user_input, selected_device, selected_location)
+                
+                # Create mock sources
+                mock_sources = [
+                    {
+                        "score": 0.95,
+                        "metadata": {
+                            "raw_log": f"Example log entry for {selected_device if selected_device != 'All Devices' else 'AGW1'} at {selected_location if selected_location != 'All Locations' else 'YM'}: Interface GigabitEthernet1/0/1 changed state to up",
+                            "timestamp": 1649956800,  # Example timestamp (April 2022)
+                            "event_type": "IF_UP",
+                            "category": "ETHPORT",
+                            "collection_name": "router_agw1_ym_log_vector"
+                        }
+                    },
+                    {
+                        "score": 0.87,
+                        "metadata": {
+                            "raw_log": f"Configuration change detected on {selected_device if selected_device != 'All Devices' else 'AGW66'}: interface speed set to 1Gbps",
+                            "timestamp": 1649957400,  # 10 minutes later
+                            "event_type": "CONFIG_CHANGE",
+                            "category": "CONFIG",
+                            "collection_name": "router_agw66_ym_log_vector"
+                        }
+                    }
+                ]
 
-                # Define the API endpoint
-                api_endpoint = f"{API_BASE_URL}/api/v1/chat/query"
-                logger.info(f"Sending POST request to backend chat API: {api_endpoint}")
+                # Add assistant's response to chat history
+                st.session_state["messages"].append({
+                    "role": "assistant",
+                    "content": mock_response,
+                    "sources": mock_sources  # Include mock sources
+                })
+                logger.info("Generated mock chat response.")
 
-                # Make the POST request with the enhanced query and auth header
-                response = requests.post(
-                    api_endpoint,
-                    json={"query": enhanced_query},
-                    headers=auth_header, # Include the Bearer token
-                    timeout=300 # 5-minute timeout for potentially long AI responses
-                )
-
-                logger.info(f"Received response from {api_endpoint} with status code: {response.status_code}")
-
-                # --- Process the API Response ---
-                if response.status_code == 200:
-                    result = response.json()
-                    assistant_response = result.get("response", "Sorry, I received a response but couldn't find the answer content.")
-                    sources = result.get("sources", []) # Get sources if provided
-
-                    # Add assistant's response to chat history
-                    st.session_state["messages"].append({
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "sources": sources # Store sources with the message
-                    })
-                    logger.info("Successfully received and processed chat response.")
-
-                elif response.status_code == 401:
-                     # Handle token expiration or invalid token issues
-                     error_msg = "Authentication Error (401): Your session may have expired or the token is invalid. Please log out and log back in."
-                     logger.error(f"{error_msg} - Response: {response.text}")
-                     st.error(error_msg)
-                     st.session_state["messages"].append({"role": "assistant", "content": f"⚠️ {error_msg}"})
-
-                elif response.status_code == 404:
-                    # Handle case where the API endpoint doesn't exist
-                    error_msg = f"API Endpoint Not Found (404): Could not reach the chat API at {api_endpoint}."
-                    logger.error(error_msg)
-                    st.error(error_msg)
-                    st.session_state["messages"].append({"role": "assistant", "content": f"⚠️ {error_msg}"})
-
-                else:
-                    # Handle other non-success status codes
-                    error_msg = f"API Error: {response.status_code}"
-                    details = response.text # Default details to raw text
-                    try:
-                        # Try to get more specific error detail from JSON response
-                         details = response.json().get("detail", response.text)
-                         error_msg = f"{error_msg} - {details}"
-                    except json.JSONDecodeError:
-                         pass # Keep raw text if not JSON
-
-                    logger.error(f"Chat API call failed: {error_msg}")
-                    st.error(f"Failed to get response from AI ({response.status_code}).")
-                    st.session_state["messages"].append({"role": "assistant", "content": f"⚠️ {error_msg}"})
-
-            except requests.exceptions.Timeout:
-                 error_msg = "Request timed out. The AI backend took too long to respond."
-                 logger.error(error_msg)
-                 st.error(error_msg)
-                 st.session_state["messages"].append({"role": "assistant", "content": f"⚠️ {error_msg}"})
-            except requests.exceptions.ConnectionError:
-                 error_msg = f"Connection Error: Could not connect to the backend API at {API_BASE_URL}."
-                 logger.error(error_msg)
-                 st.error(error_msg)
-                 st.session_state["messages"].append({"role": "assistant", "content": f"⚠️ {error_msg}"})
             except Exception as e:
                 error_msg = f"An unexpected error occurred: {str(e)}"
-                logger.exception("Unexpected error during chat API call:") # Log full traceback
+                logger.exception("Unexpected error during chat response generation:")
                 st.error(error_msg)
                 st.session_state["messages"].append({
                     "role": "assistant",
@@ -347,6 +296,65 @@ def chat_interface():
 
         # Rerun the script to display the new message (user + assistant response/error)
         st.rerun()
+
+def generate_mock_response(query, device, location):
+    """
+    Generate a mock response based on the query and selected filters.
+    
+    Args:
+        query: The user's query
+        device: The selected device filter
+        location: The selected location filter
+        
+    Returns:
+        str: A mock response
+    """
+    # Convert query to lowercase for easier matching
+    query_lower = query.lower()
+    
+    # Build context info for the response
+    context_info = ""
+    if device != "All Devices":
+        context_info += f" for device {device}"
+    if location != "All Locations":
+        context_info += f" at location {location}"
+    
+    # Default response if no patterns match
+    default_response = f"Based on the logs{context_info}, I don't have specific information about that query. Could you try rephrasing or asking about interface status, configuration changes, or system events?"
+    
+    # Check for different query patterns and provide appropriate responses
+    if any(word in query_lower for word in ["hello", "hi", "hey", "greetings"]):
+        return f"Hello! How can I help you with your network monitoring{context_info} today?"
+        
+    elif "status" in query_lower or "health" in query_lower:
+        return f"The network status{context_info} shows all systems operational. There have been no critical alerts in the past 24 hours."
+        
+    elif "interface" in query_lower and ("down" in query_lower or "up" in query_lower):
+        if device != "All Devices":
+            return f"For {device} at {location if location != 'All Locations' else 'all locations'}, 3 interfaces are currently down: GigabitEthernet1/0/8, GigabitEthernet2/0/11, and TenGigabitEthernet3/0/2. All other interfaces are up and operational."
+        else:
+            return "Across all monitored devices, 7 interfaces are currently down. The most recent down event was on AGW66 at YM for interface GigabitEthernet1/0/8 approximately 3 hours ago."
+            
+    elif "flapping" in query_lower:
+        if device != "All Devices":
+            return f"I've detected 2 flapping interfaces on {device}{context_info}: GigabitEthernet1/0/3 and GigabitEthernet1/0/7. The flapping started approximately 4 hours ago and is continuing intermittently."
+        else:
+            return "Across the network, 5 interfaces have been flapping in the last 24 hours. The most affected device is AGW1 with 3 flapping interfaces."
+            
+    elif "configuration" in query_lower or "config" in query_lower:
+        return f"There have been 7 configuration changes{context_info} in the last 24 hours. The most recent was a speed change to 1Gbps on interface GigabitEthernet1/0/12."
+        
+    elif "bgp" in query_lower:
+        if device != "All Devices":
+            return f"BGP sessions for {device}{context_info} are stable. No BGP neighbor changes or routing updates have been detected in the past 24 hours."
+        else:
+            return "There was one BGP peer flap detected on AGW66 at YM approximately 6 hours ago, but it has since stabilized. All other BGP sessions are stable."
+            
+    elif "error" in query_lower or "critical" in query_lower or "alert" in query_lower:
+        return f"I found 3 critical alerts{context_info} in the past 24 hours:\n1. High CPU utilization (95%) on AGW1 at 15:30 UTC\n2. Memory allocation failure on BGP process at 18:45 UTC\n3. Interface GigabitEthernet1/0/8 excessive errors at 22:10 UTC"
+    
+    # Return default response if no patterns match
+    return default_response
 
 # --- Sidebar Setup ---
 with st.sidebar:
@@ -402,36 +410,18 @@ with st.sidebar:
     # --- System Status / Health Check ---
     st.markdown("---")
     st.subheader("System Status")
-    if st.button("Check Backend API Health", key="check_api_health"):
-        # Assuming a general health endpoint exists at the base URL
-        health_endpoint = f"{API_BASE_URL}/api/health"
-        with st.spinner("Checking API health..."):
-            try:
-                logger.info(f"Performing health check on {health_endpoint}")
-                response = requests.get(health_endpoint, timeout=10)
-                if response.status_code == 200:
-                    st.success("Backend API is online ✅")
-                    try:
-                         # Display JSON response if available
-                         st.json(response.json())
-                         logger.info(f"Health check successful: {response.json()}")
-                    except json.JSONDecodeError:
-                         st.info("API online, but health response was not valid JSON.")
-                         logger.warning(f"Health check successful but response not JSON: {response.text}")
-                else:
-                    st.error(f"Backend API check failed (Status: {response.status_code}) ❌")
-                    st.text(f"Response: {response.text}")
-                    logger.error(f"Health check failed ({response.status_code}): {response.text}")
-            except requests.exceptions.Timeout:
-                 st.error("API health check timed out ❌")
-                 logger.error("Health check timed out.")
-            except requests.exceptions.ConnectionError:
-                 st.error(f"Connection Error: Could not reach API at {API_BASE_URL} ❌")
-                 logger.error(f"Health check connection error to {API_BASE_URL}.")
-            except Exception as e:
-                st.error(f"Error during health check: {e} ❌")
-                logger.exception("Unexpected error during health check:")
-
+    
+    # Display mock system status instead of checking API health
+    if st.button("Check System Status", key="check_system_status"):
+        st.success("Mock Network Monitoring System is online ✅")
+        st.info("Using local simulation mode - no backend API connection required")
+        st.json({
+            "status": "healthy",
+            "mode": "simulation",
+            "timestamp": datetime.now().isoformat(),
+            "service": "mock_network_monitor"
+        })
+    
     # --- User/Logout Section ---
     st.markdown("---")
     st.subheader("User")

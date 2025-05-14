@@ -171,9 +171,7 @@ def render_sidebar_controls():
     if selected_device != "All" and selected_location != "All":
         collection_name = f"router_{selected_device}_{selected_location}_log_vector"
     else:
-        # Default to first available collection
-        collections = get_collections()
-        collection_name = collections[0] if collections else None
+        collection_name = f"router_{selected_device_type}_log_vector"
     
     # Event filters
     st.sidebar.subheader("Event Filters")
