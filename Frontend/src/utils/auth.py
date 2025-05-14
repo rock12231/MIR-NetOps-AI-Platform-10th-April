@@ -1,26 +1,29 @@
 # src/utils/auth.py
 import streamlit as st
 import os
+import requests
+import json
 from dotenv import load_dotenv
 from loguru import logger
 
 # Load environment variables
 load_dotenv()
 
-# Hardcoded credentials since we don't have a backend auth API
-VALID_USERNAME = "mir"
-VALID_PASSWORD = "mir123"
-
+# Define API base URL
+API_BASE_URL = os.getenv('BACKEND_API_BCHAT_API_BASE_URLASE_URL', 'http://172.178.38.117:8001')
+# CHAT_API_BASE_URL:-http://172.178.38.117:8001
 def init_session_state():
     """Initialize session state variables"""
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
     if "username" not in st.session_state:
         st.session_state.username = None
+    if "token" not in st.session_state:
+        st.session_state.token = None
     logger.debug("Session state initialized.")
 
 def login():
-    """Handle user login with hardcoded credentials"""
+    """Handle user login via API"""
     st.subheader("Login Required")
     with st.form("login_form"):
         username = st.text_input("Username", key="login_username")
@@ -29,20 +32,49 @@ def login():
 
         if submitted:
             logger.info(f"Login attempt for user: {username}")
-            if username == VALID_USERNAME and password == VALID_PASSWORD:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                logger.success(f"User '{username}' logged in successfully.")
-                st.success("Logged in successfully!")
-                st.rerun()
-            else:
-                logger.warning(f"Invalid login attempt for user: {username}")
-                st.error("Invalid username or password.")
+            try:
+                # Call the authentication API
+                login_url = f"{API_BASE_URL}/api/v1/auth/token"
+                response = requests.post(
+                    login_url,
+                    data={"username": username, "password": password},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
+                )
+                
+                if response.status_code == 200:
+                    # Extract token from response
+                    auth_data = response.json()
+                    access_token = auth_data.get("access_token")
+                    
+                    # Store in session state
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.token = access_token
+                    
+                    logger.success(f"User '{username}' logged in successfully.")
+                    st.success("Logged in successfully!")
+                    st.rerun()
+                else:
+                    # Handle error responses
+                    error_msg = "Invalid credentials"
+                    try:
+                        error_data = response.json()
+                        if "detail" in error_data:
+                            error_msg = error_data["detail"]
+                    except:
+                        pass
+                    
+                    logger.warning(f"Failed login attempt for user {username}: {error_msg}")
+                    st.error(f"Login failed: {error_msg}")
+                    
+            except Exception as e:
+                logger.error(f"Login error: {str(e)}")
+                st.error(f"Connection error: {str(e)}")
 
 def logout():
     """Handle user logout"""
     logger.info(f"Logging out user: {st.session_state.get('username', 'Unknown')}")
-    keys_to_clear = ["logged_in", "username"]
+    keys_to_clear = ["logged_in", "username", "token"]
     # Optionally clear other session data
     # keys_to_clear.extend(['messages', 'welcome_shown', etc.])
     for key in keys_to_clear:
