@@ -85,24 +85,6 @@ def get_default_metadata():
 # Backend API URL
 BACKEND_URL = "http://backend-api:8001" # Correct endpoint for backend API
 
-# Function to check health status
-def health_check():
-    """
-    Check system health by calling the health API.
-    
-    Returns:
-        bool: True if system is healthy, False otherwise
-    """
-    try:
-        response = requests.get(f"{BACKEND_URL}/system/health")
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("status") == "healthy"
-        return False
-    except:
-        logger.error("Failed to connect to health check API")
-        return False
-
 # Configure page
 st.set_page_config(
     page_title="3_Interface_Monitoring",
@@ -148,7 +130,7 @@ load_custom_css()
 logger.info("Loading Interface Monitoring Component")
 
 # Global variables
-metadata = load_metadata()
+metadata = None
 
 # Function to call backend API
 def call_api(endpoint, params=None):
@@ -182,6 +164,8 @@ def add_tooltip(text, tooltip):
 
 # Sidebar controls for interface monitoring
 def render_sidebar_controls():
+    global metadata
+    
     # User Profile Section
     with st.sidebar:
         st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
@@ -224,6 +208,12 @@ def render_sidebar_controls():
         end_time = datetime.combine(end_date, end_time_input)
     else:
         start_time = end_time - time_options[selected_time]
+    
+    # Load metadata with spinner and success message
+    with st.sidebar:
+        with st.spinner("Loading metadata..."):
+            metadata = load_metadata()
+            st.success("Metadata loaded successfully!")
     
     # Device filter options (focused on AGW devices with interface data)
     st.sidebar.subheader("🔧 Device Filters")
@@ -331,20 +321,6 @@ def render_sidebar_controls():
         **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Quick Navigation Links
-        st.markdown("---")
-        st.markdown("### 🔗 Quick Links")
-        
-        st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
-        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
-        # Current page
-        st.markdown("**🔌 Interface Monitoring**")
-        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
-        st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
-        
-        # Return to home - fixing the path error
-        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
         
         # Logout option
         st.markdown("---")

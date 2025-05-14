@@ -17,7 +17,7 @@ import os
 # Removed: from src.utils.qdrant_client import load_metadata, health_check
 from src.utils.data_processing import categorize_interface_events, calculate_network_health, analyze_device_distribution, create_location_health_matrix
 from src.utils.visualization import COLOR_SCALES, create_network_topology_map, create_event_trend_chart, create_location_heatmap
-from src.utils.auth import check_auth, init_session_state
+from src.utils.auth import check_auth, init_session_state, logout
 
 # Backend API URL
 BACKEND_URL = "http://backend-api:8001"  # Update this with your actual backend URL
@@ -68,24 +68,6 @@ def get_default_metadata():
         "fw": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": [], "processes": []},
         "vadc": {"devices": [], "locations": [], "categories": [], "event_types": [], "interfaces": []}
     }
-
-# Function to check health status
-def health_check():
-    """
-    Check system health by calling the health API.
-    
-    Returns:
-        bool: True if system is healthy, False otherwise
-    """
-    try:
-        response = requests.get(f"{BACKEND_URL}/system/health")
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("status") == "healthy"
-        return False
-    except:
-        logger.error("Failed to connect to health check API")
-        return False
 
 # --- Authentication Check ---
 init_session_state()  # Initialize session state
@@ -172,8 +154,11 @@ def render_sidebar_controls():
     else:
         start_time = end_time - time_options[selected_time]
     
-    # Load metadata
-    metadata = load_metadata()
+    # Load metadata with spinner and success message
+    with st.sidebar:
+        with st.spinner("Loading metadata..."):
+            metadata = load_metadata()
+            st.success("Metadata loaded successfully!")
     
     # Device type selection
     st.sidebar.subheader("🔧 Device Filters")
@@ -207,46 +192,21 @@ def render_sidebar_controls():
         # Set session state flag to trigger load in main function  
         st.session_state["load_network_data_clicked"] = True
 
-    # System Info Section - Add after the controls
+    # System Info Section - Update to remove health check
     with st.sidebar:
         st.markdown("---")
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown("### 🖥️ System Info")
-        
-        # Check database connection for status display
-        try:
-            db_connected = health_check()
-        except:
-            db_connected = False
             
         st.markdown(f"""
         **Version:** 1.2.0
-        
-        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
         
         **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Quick Navigation Links
-        st.markdown("---")
-        st.markdown("### 🔗 Quick Links")
-        
-        # Current page
-        st.markdown("**🌍 Network Overview**")
-        
-        # Other pages
-        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
-        st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
-        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
-        st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
-        
-        # Return to home - fixing the path error
-        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
-        
         # Logout option
         st.markdown("---")
-        from src.utils.auth import logout
         if st.button("🚪 Logout", type="primary"):
             logout()
             

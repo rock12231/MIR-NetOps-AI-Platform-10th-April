@@ -383,9 +383,14 @@ def render_sidebar():
     
     st.sidebar.header("⚙️ AI Summary Controls")
 
+    # Load metadata with spinner and success message
+    with st.sidebar:
+        with st.spinner("Loading metadata..."):
+            metadata = load_metadata()
+            st.success("Metadata loaded successfully!")
+
     # --- Collection Selection ---
     st.sidebar.subheader("📍 Collection Selection")
-    metadata = load_metadata()
     device_types = sorted([key for key in metadata if key not in ["collections"]])
     selected_device_type = st.sidebar.selectbox(
         "Device Type:",
@@ -587,34 +592,12 @@ def render_sidebar():
         st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
         st.markdown("### 🖥️ System Info")
         
-        # Check database connection for status display
-        try:
-            db_connected = health_check()
-        except:
-            db_connected = False
-            
         st.markdown(f"""
         **Version:** 1.2.0
-        
-        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
         
         **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Quick Navigation Links
-        st.markdown("---")
-        st.markdown("### 🔗 Quick Links")
-        
-        st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
-        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
-        st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
-        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
-        # Current page
-        st.markdown("**🧠 AI Summary**")
-        
-        # Return to home - fixing the path error
-        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
         
         # Logout option
         st.markdown("---")
@@ -629,13 +612,21 @@ def render_sidebar():
 def main():
     st.title("🧠 AI-Powered Log Analysis")
     st.markdown("Generate AI summaries of network logs or analyze specific logs by ID or custom input.")
+    st.info("👈 Use the sidebar to select filters and click 'Generate AI Summary' to begin analysis.")
+        
 
-    # Perform health check once and store in session state if not already done
-    # This check will run when the page loads or after Reset
+    # Perform health check when page loads or after Reset
     if 'api_healthy' not in st.session_state:
         with st.spinner("Checking API status..."):
-            st.session_state['api_healthy'] = health_check() # Call the function from Main.py
-            logger.info(f"API Health Check Result: {st.session_state['api_healthy']}")
+            # Call API health check endpoint
+            try:
+                response = requests.get(f"{API_BASE_URL}/system/health", timeout=5)
+                st.session_state['api_healthy'] = (response.status_code == 200 and 
+                                                 response.json().get("status") == "healthy")
+                logger.info(f"API Health Check Result: {st.session_state['api_healthy']}")
+            except Exception as e:
+                logger.error(f"API Health Check Failed: {str(e)}")
+                st.session_state['api_healthy'] = False
 
     # Render sidebar - this now uses the session state for disabling
     constructed_collection_name = render_sidebar()

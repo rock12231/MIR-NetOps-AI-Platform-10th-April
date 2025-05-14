@@ -472,20 +472,6 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Quick Navigation Links
-    st.markdown("---")
-    st.markdown("### 🔗 Quick Links")
-    
-    st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
-    st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
-    st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
-    # Current page
-    st.markdown("**🤖 AI Chatbot**")
-    st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
-    
-    # Return to home - fixing the path error
-    st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
-    
     # Logout option
     st.markdown("---")
     if st.button("🚪 Logout", type="primary", key="logout_chat"):

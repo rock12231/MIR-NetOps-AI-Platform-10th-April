@@ -10,9 +10,35 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 from loguru import logger
-from src.utils.qdrant_client import get_qdrant_client, health_check
+import requests
+import json
+# Removed health_check from import
+from src.utils.qdrant_client import get_qdrant_client
 # Import specific functions needed
 from src.utils.auth import init_session_state, login, logout, check_auth
+
+# Define API base URL
+API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
+
+# Add API-based health check function
+def health_check():
+    """
+    Check system health by calling the health API.
+    
+    Returns:
+        bool: True if system is healthy, False otherwise
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/system/health")
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"Health check response: {data}")
+            return data.get("status") == "healthy"
+        logger.warning(f"Health check failed with status code: {response.status_code}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to connect to health check API: {str(e)}")
+        return False
 
 # --- Page Configuration --- MUST BE FIRST STREAMLIT COMMAND
 st.set_page_config(
@@ -171,53 +197,53 @@ def main():
         unsafe_allow_html=True
     )
     
-    # Dashboard Summary
-    st.subheader("📊 Dashboard Summary")
+    # # Dashboard Summary
+    # st.subheader("📊 Dashboard Summary")
     
-    # Get dashboard data
-    dashboard_data = get_mock_dashboard_data()
+    # # Get dashboard data
+    # dashboard_data = get_mock_dashboard_data()
     
-    # Key metrics in columns
-    col1, col2, col3, col4 = st.columns(4)
+    # # Key metrics in columns
+    # col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("Active Devices", dashboard_data["active_devices"])
-        st.markdown('</div>', unsafe_allow_html=True)
+    # with col1:
+    #     st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+    #     st.metric("Active Devices", dashboard_data["active_devices"])
+    #     st.markdown('</div>', unsafe_allow_html=True)
     
-    with col2:
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("Alerts (24h)", dashboard_data["alerts_24h"], delta="2")
-        st.markdown('</div>', unsafe_allow_html=True)
+    # with col2:
+    #     st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+    #     st.metric("Alerts (24h)", dashboard_data["alerts_24h"], delta="2")
+    #     st.markdown('</div>', unsafe_allow_html=True)
     
-    with col3:
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("Flapping Interfaces", dashboard_data["flapping_interfaces"], delta="-1")
-        st.markdown('</div>', unsafe_allow_html=True)
+    # with col3:
+    #     st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+    #     st.metric("Flapping Interfaces", dashboard_data["flapping_interfaces"], delta="-1")
+    #     st.markdown('</div>', unsafe_allow_html=True)
     
-    with col4:
-        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-        st.metric("System Health", f"{dashboard_data['system_health']}%", delta="1.5%")
-        st.markdown('</div>', unsafe_allow_html=True)
+    # with col4:
+    #     st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+    #     st.metric("System Health", f"{dashboard_data['system_health']}%", delta="1.5%")
+    #     st.markdown('</div>', unsafe_allow_html=True)
     
     # Events chart
-    st.subheader("Weekly Event Trend")
-    events_df = pd.DataFrame(dashboard_data["events_chart"])
-    fig = px.line(
-        events_df, 
-        x="date", 
-        y="events",
-        title="Network Events (Last 7 Days)",
-        line_shape="spline",
-        markers=True
-    )
-    fig.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=40, b=20),
-        xaxis_title="",
-        yaxis_title="Event Count"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # st.subheader("Weekly Event Trend")
+    # events_df = pd.DataFrame(dashboard_data["events_chart"])
+    # fig = px.line(
+    #     events_df, 
+    #     x="date", 
+    #     y="events",
+    #     title="Network Events (Last 7 Days)",
+    #     line_shape="spline",
+    #     markers=True
+    # )
+    # fig.update_layout(
+    #     height=300,
+    #     margin=dict(l=20, r=20, t=40, b=20),
+    #     xaxis_title="",
+    #     yaxis_title="Event Count"
+    # )
+    # st.plotly_chart(fig, use_container_width=True)
 
     # Check connection to Qdrant
     st.subheader("⚡ System Status")
@@ -298,13 +324,13 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Quick links
-    st.sidebar.markdown("### 🔗 Quick Links")
-    st.sidebar.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
-    st.sidebar.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
-    st.sidebar.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
-    st.sidebar.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
-    st.sidebar.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+    # # Quick links
+    # st.sidebar.markdown("### 🔗 Quick Links")
+    # st.sidebar.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
+    # st.sidebar.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
+    # st.sidebar.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
+    # st.sidebar.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
+    # st.sidebar.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
 
     # --- Sidebar for Logout and User Info ---
     with st.sidebar:
