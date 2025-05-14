@@ -1,9 +1,4 @@
-"""
-Configuration module for the Network Log Analysis API.
-
-Handles environment variables, logging setup, and initializes connections
-to external services like Qdrant and LLM providers.
-"""
+# Backend/app/core/config.py
 import os
 import logging
 from typing import Dict, Any, Optional, Callable

@@ -1,8 +1,4 @@
-"""
-Interface Monitoring Router
-
-Provides endpoints for fetching and analyzing network interface data across collections.
-"""
+# Backend/app/routers/interface_monitoring_router.py
 import logging
 import json
 import os

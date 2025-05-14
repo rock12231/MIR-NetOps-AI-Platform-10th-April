@@ -1,3 +1,4 @@
+# Backend/app/core/models.py
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 
@@ -31,6 +32,7 @@ class AnalyzeLogsRequest(BaseModel):
     logs: Optional[List[Any]] = []
     collection_name: Optional[str] = None
 
+# --- Models for Summary Generation ---
 class SummaryRequest(BaseModel):
     """
     Request model for generating a summary of logs from a collection.

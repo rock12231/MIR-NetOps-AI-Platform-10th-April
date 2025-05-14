@@ -1,8 +1,4 @@
-"""
-Devices Dashboard Router
-
-Provides endpoints for fetching device-specific data and metrics for the dashboard.
-"""
+# Backend/app/routers/devices_dashboard_router.py
 import logging
 import json
 import os

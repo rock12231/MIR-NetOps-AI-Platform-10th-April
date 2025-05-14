@@ -1,13 +1,9 @@
-"""
-System Router
-
-Provides system-level endpoints for health check and configuration information.
-"""
+# Backend/app/routers/system_router.py
 import logging
 from typing import Dict
 from fastapi import APIRouter, HTTPException
 
-from app.core.config import qdrant, llm # Import initialized clients
+from app.core.config import qdrant, llm
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/system", tags=["System"])

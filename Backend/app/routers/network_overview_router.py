@@ -1,8 +1,4 @@
-"""
-Network Overview Router
-
-Provides endpoints for fetching network overview data and metadata for the dashboard.
-"""
+# Backend/app/routers/network_overview_router.py
 import logging
 import json
 import os

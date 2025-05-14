@@ -1,9 +1,4 @@
-"""
-Network Log Analysis API - Main application entry point.
-
-This module initializes the FastAPI application, configures middleware,
-and loads all necessary routers.
-"""
+# Backend/app/main.py
 import logging
 import uvicorn
 from fastapi import FastAPI

@@ -1,9 +1,4 @@
-"""
-Network Log Analysis Router
-
-This module contains API endpoints for analyzing network logs using AI.
-It provides functionality for generating summaries and analyzing log entries.
-"""
+# Backend/app/routers/ai_summary_router.py
 import uuid
 import json
 import logging

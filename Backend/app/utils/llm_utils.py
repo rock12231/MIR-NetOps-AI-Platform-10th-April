@@ -1,9 +1,4 @@
-"""
-LLM Utility Functions
-
-This module provides utility functions for working with LLMs,
-including prompt loading, token counting, and response processing.
-"""
+# Backend/app/utils/llm_utils.py
 import json
 import re
 import logging
