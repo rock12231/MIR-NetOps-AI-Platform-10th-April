@@ -10,13 +10,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
+import requests
 from loguru import logger
 
 # Import utilities
-from src.utils.qdrant_client import get_qdrant_client, load_metadata, get_collections, fetch_data
+from src.utils.qdrant_client import load_metadata  # Keep these for metadata and collections
 from src.utils.data_processing import detect_flapping_interfaces, analyze_interface_stability
 from src.utils.visualization import create_interface_timeline, create_interface_heatmap
 from src.utils.auth import check_auth 
+
+# Backend API URL
+BACKEND_URL = "http://backend-api:8001"   # Update this with your actual backend URL
 
 # Configure page
 st.set_page_config(
@@ -36,6 +40,88 @@ st.markdown("Overview of network health, events, and activity.")
 # Global variables
 CACHE_TTL = int(os.getenv('CACHE_TTL', '300'))
 metadata = load_metadata()
+
+# Function to call backend API
+def call_api(endpoint, params=None):
+    """
+    Call the backend API and handle errors.
+    
+    Args:
+        endpoint (str): API endpoint path (without base URL)
+        params (dict, optional): Query parameters
+        
+    Returns:
+        dict or None: API response or None on error
+    """
+    try:
+        url = f"{BACKEND_URL}{endpoint}"
+        response = requests.get(url, params=params)
+        response.raise_for_status()  # Raise exception for 4XX/5XX responses
+        return response.json()
+    except requests.RequestException as e:
+        st.error(f"API Error: {str(e)}")
+        logger.error(f"API Error ({endpoint}): {str(e)}")
+        return None
+
+# Function to fetch device data from API
+def fetch_device_data_from_api(collection_name, start_time, end_time, device=None, location=None, 
+                         category=None, event_type=None, severity=None, interface=None, limit=1000):
+    """
+    Fetch device data from the backend API.
+    
+    Args:
+        collection_name (str): Name of the collection to query
+        start_time (datetime): Start time for filtering
+        end_time (datetime): End time for filtering
+        device (str, optional): Filter by device name
+        location (str, optional): Filter by location
+        category (str, optional): Filter by event category
+        event_type (str, optional): Filter by event type
+        severity (str, optional): Filter by severity
+        interface (str, optional): Filter by interface
+        limit (int): Maximum number of records to return
+        
+    Returns:
+        pandas.DataFrame: DataFrame with filtered device data
+    """
+    # Prepare parameters
+    params = {
+        "collection_name": collection_name,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "limit": limit
+    }
+    
+    # Add optional filters if provided
+    if device:
+        params["device"] = device
+    if location:
+        params["location"] = location
+    if category:
+        params["category"] = category
+    if event_type:
+        params["event_type"] = event_type
+    if severity:
+        params["severity"] = severity
+    if interface:
+        params["interface"] = interface
+    
+    # Make API call
+    response = call_api("/api/v1/devices/device_data", params)
+    
+    # Process response
+    if response and "data" in response and response["count"] > 0:
+        df = pd.DataFrame(response["data"])
+        
+        # Convert timestamp to datetime
+        if 'timestamp' in df.columns:
+            df['timestamp_dt'] = pd.to_datetime(df['timestamp'], unit='s')
+            
+        logger.info(f"Loaded {len(df)} records from API")
+        return df
+    else:
+        logger.warning("No data returned from API")
+        return pd.DataFrame()
 
 # Sidebar controls
 def render_sidebar_controls():
@@ -138,8 +224,8 @@ def main():
     # Fetch data button
     if st.sidebar.button("Fetch Data"):
         with st.spinner("Fetching data..."):
-            # Fetch data
-            df = fetch_data(
+            # Fetch data from API
+            df = fetch_device_data_from_api(
                 collection_name=filters["collection_name"],
                 start_time=filters["start_time"],
                 end_time=filters["end_time"],
