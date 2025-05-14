@@ -14,10 +14,10 @@ import requests
 from loguru import logger
 
 # Import utilities
-from src.utils.qdrant_client import load_metadata  # Keep these for metadata and collections
+from src.utils.qdrant_client import load_metadata, health_check  # Added health_check for sidebar
 from src.utils.data_processing import detect_flapping_interfaces, analyze_interface_stability
 from src.utils.visualization import create_interface_timeline, create_interface_heatmap
-from src.utils.auth import check_auth 
+from src.utils.auth import check_auth, init_session_state, logout  # Added logout for sidebar
 
 # Backend API URL
 BACKEND_URL = "http://backend-api:8001"   # Update this with your actual backend URL
@@ -30,8 +30,37 @@ st.set_page_config(
 )
 
 # --- Authentication Check ---
+init_session_state()  # Initialize session state
 check_auth()
 logger.info(f"User '{st.session_state.username}' accessed Devices Dashboard page.")
+
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
 
 # Page title
 st.title("📊 Devices Dashboard")
@@ -125,10 +154,27 @@ def fetch_device_data_from_api(collection_name, start_time, end_time, device=Non
 
 # Sidebar controls
 def render_sidebar_controls():
-    st.sidebar.header("Device Controls")
+    # User Profile Section
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        st.header("👤 User Profile")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Username:** {st.session_state.username}
+        
+        **Role:** Network Administrator
+        
+        **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+        """)
+        
+        st.markdown("---")
+    
+    # Device Controls - keep existing
+    st.sidebar.header("📊 Device Controls")
     
     # Time range selection
-    st.sidebar.subheader("Time Range")
+    st.sidebar.subheader("⏱️ Time Range")
     end_time = datetime.now()
     time_options = {
         "Last 1 hour": timedelta(hours=1),
@@ -142,10 +188,10 @@ def render_sidebar_controls():
     selected_time = st.sidebar.selectbox("Select time range", list(time_options.keys()))
     
     if selected_time == "Custom":
-        start_date = st.sidebar.date_input("Start date", end_time - timedelta(days=1))
-        start_time_input = st.sidebar.time_input("Start time", datetime.strptime("00:00", "%H:%M").time())
-        end_date = st.sidebar.date_input("End date", end_time)
-        end_time_input = st.sidebar.time_input("End time", datetime.strptime("23:59", "%H:%M").time())
+        start_date = st.sidebar.date_input("📅 Start date", end_time - timedelta(days=1))
+        start_time_input = st.sidebar.time_input("🕒 Start time", datetime.strptime("00:00", "%H:%M").time())
+        end_date = st.sidebar.date_input("📅 End date", end_time)
+        end_time_input = st.sidebar.time_input("🕒 End time", datetime.strptime("23:59", "%H:%M").time())
         
         start_time = datetime.combine(start_date, start_time_input)
         end_time = datetime.combine(end_date, end_time_input)
@@ -153,7 +199,7 @@ def render_sidebar_controls():
         start_time = end_time - time_options[selected_time]
     
     # Device selection
-    st.sidebar.subheader("Device Filters")
+    st.sidebar.subheader("🔧 Device Filters")
     
     # Get all device types
     device_types = [k for k in metadata.keys() if k != "collections"]
@@ -165,16 +211,16 @@ def render_sidebar_controls():
     
     # Get locations for selected device type
     locations = metadata[selected_device_type]["locations"] if selected_device_type in metadata else []
-    selected_location = st.sidebar.selectbox("Location", ["All"] + locations)
+    selected_location = st.sidebar.selectbox("📍 Location", ["All"] + locations)
     
     # Determine the appropriate collection
     if selected_device != "All" and selected_location != "All":
         collection_name = f"router_{selected_device}_{selected_location}_log_vector"
     else:
-        collection_name = f"router_{selected_device_type}_log_vector"
+        collection_name = None
     
     # Event filters
-    st.sidebar.subheader("Event Filters")
+    st.sidebar.subheader("🔍 Event Filters")
     
     # Category selection
     categories = metadata[selected_device_type]["categories"] if selected_device_type in metadata else []
@@ -200,6 +246,71 @@ def render_sidebar_controls():
     else:
         selected_interface = "All"
     
+    # Action buttons - styling update
+    fetch_col, reset_col = st.sidebar.columns(2)
+    with fetch_col:
+        if st.button("📊 Fetch Data", type="primary"):
+            # Set session state flag to trigger functionality in main function
+            st.session_state["fetch_data_clicked"] = True
+    
+    with reset_col:
+        if st.button("🔄 Reset"):
+            # Set session state flag to trigger functionality in main function
+            st.session_state["reset_filters_clicked"] = True
+    
+    # Basic text search in sidebar
+    st.sidebar.subheader("🔎 Text Search")
+    search_query = st.sidebar.text_input("Search Query (keywords)")
+    search_k = st.sidebar.slider("Top K Results", 5, 50, 10)
+    
+    if st.sidebar.button("🔍 Search"):
+        # Set session state flag and search parameters
+        st.session_state["search_clicked"] = True
+        st.session_state["search_query"] = search_query
+        st.session_state["search_k"] = search_k
+    
+    # System Info Section
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown("### 🖥️ System Info")
+        
+        # Check database connection for status display
+        try:
+            db_connected = health_check()
+        except:
+            db_connected = False
+            
+        st.markdown(f"""
+        **Version:** 1.2.0
+        
+        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
+        
+        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Quick Navigation Links
+        st.markdown("---")
+        st.markdown("### 🔗 Quick Links")
+        
+        st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
+        # Current page
+        st.markdown("**📊 Devices Dashboard**")
+        st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
+        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
+        st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+        
+        # Return to home - fixing the path error
+        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
+        
+        # Logout option
+        st.markdown("---")
+        if st.button("🚪 Logout", type="primary"):
+            logout()
+            
+        st.caption("© 2023 MIR Networks")
+    
     # Return all selected filters
     return {
         "start_time": start_time,
@@ -219,8 +330,11 @@ def main():
     # Render sidebar and get filters
     filters = render_sidebar_controls()
     
-    # Fetch data button
-    if st.sidebar.button("Fetch Data"):
+    # Handle Fetch Data button click
+    if st.session_state.get("fetch_data_clicked", False):
+        # Reset the flag
+        st.session_state["fetch_data_clicked"] = False
+        
         with st.spinner("Fetching data..."):
             # Fetch data from API
             df = fetch_device_data_from_api(
@@ -244,21 +358,30 @@ def main():
             st.session_state['data'] = df
             st.session_state['collection_name'] = filters["collection_name"]
     
-    # Reset filters button
-    if st.sidebar.button("Reset Filters"):
+    # Handle Reset Filters button click
+    if st.session_state.get("reset_filters_clicked", False):
+        # Reset the flag
+        st.session_state["reset_filters_clicked"] = False
+        
         # Clear session state
         if 'data' in st.session_state:
             del st.session_state['data']
         if 'collection_name' in st.session_state:
             del st.session_state['collection_name']
+        
+        # Rerun to reset UI
+        st.rerun()
     
-    # Basic text search in sidebar
-    st.sidebar.subheader("Text Search")
-    search_query = st.sidebar.text_input("Search Query (keywords)")
-    search_k = st.sidebar.slider("Top K Results", 5, 50, 10)
-    
-    if st.sidebar.button("Search") and search_query and 'collection_name' in st.session_state:
-        # Code for search functionality (simplified)
+    # Handle Search button click
+    if st.session_state.get("search_clicked", False) and st.session_state.get("search_query") and st.session_state.get('collection_name'):
+        # Reset the flag
+        st.session_state["search_clicked"] = False
+        
+        # Get search parameters from session state
+        search_query = st.session_state.get("search_query")
+        search_k = st.session_state.get("search_k", 10)
+        
+        # Display search info
         st.info(f"Searching for '{search_query}' is not implemented in this version.")
     
     # Check if data is available in session state

@@ -13,15 +13,16 @@ import requests
 import json
 
 # Import utilities
-from src.utils.qdrant_client import load_metadata  # Keep this for sidebar
+from src.utils.qdrant_client import load_metadata, health_check  # Added health_check for sidebar
 from src.utils.data_processing import categorize_interface_events, calculate_network_health, analyze_device_distribution, create_location_health_matrix
 from src.utils.visualization import COLOR_SCALES, create_network_topology_map, create_event_trend_chart, create_location_heatmap
-from src.utils.auth import check_auth
+from src.utils.auth import check_auth, init_session_state
 
 # Backend API URL
 BACKEND_URL = "http://backend-api:8001"  # Update this with your actual backend URL
 
 # --- Authentication Check ---
+init_session_state()  # Initialize session state
 check_auth()
 logger.info(f"User '{st.session_state.username}' accessed the Network Overview page.")
 
@@ -32,12 +33,57 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
+
 # Function to render sidebar controls
 def render_sidebar_controls():
-    st.sidebar.header("Network Overview Controls")
+    # User Profile Section
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        st.header("👤 User Profile")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Username:** {st.session_state.username}
+        
+        **Role:** Network Administrator
+        
+        **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+        """)
+        
+        st.markdown("---")
+    
+    # Network Overview Controls - keep existing controls
+    st.sidebar.header("🌐 Network Overview Controls")
     
     # Time range selection
-    st.sidebar.subheader("Time Range")
+    st.sidebar.subheader("⏱️ Time Range")
     end_time = datetime.now()
     time_options = {
         "Last 24 hours": timedelta(hours=24),
@@ -50,10 +96,10 @@ def render_sidebar_controls():
     selected_time = st.sidebar.selectbox("Select time range", list(time_options.keys()))
     
     if selected_time == "Custom":
-        start_date = st.sidebar.date_input("Start date", end_time - timedelta(days=7))
-        start_time_input = st.sidebar.time_input("Start time", datetime.strptime("00:00", "%H:%M").time())
-        end_date = st.sidebar.date_input("End date", end_time)
-        end_time_input = st.sidebar.time_input("End time", datetime.strptime("23:59", "%H:%M").time())
+        start_date = st.sidebar.date_input("📅 Start date", end_time - timedelta(days=7))
+        start_time_input = st.sidebar.time_input("🕒 Start time", datetime.strptime("00:00", "%H:%M").time())
+        end_date = st.sidebar.date_input("📅 End date", end_time)
+        end_time_input = st.sidebar.time_input("🕒 End time", datetime.strptime("23:59", "%H:%M").time())
         
         start_time = datetime.combine(start_date, start_time_input)
         end_time = datetime.combine(end_date, end_time_input)
@@ -64,7 +110,7 @@ def render_sidebar_controls():
     metadata = load_metadata()
     
     # Device type selection
-    st.sidebar.subheader("Device Filters")
+    st.sidebar.subheader("🔧 Device Filters")
     device_types = [k for k in metadata.keys() if k != "collections"]
     selected_device_types = st.sidebar.multiselect(
         "Device Types", 
@@ -80,10 +126,65 @@ def render_sidebar_controls():
     locations = sorted(list(set(locations)))
     
     selected_locations = st.sidebar.multiselect(
-        "Locations",
+        "📍 Locations",
         options=locations,
         default=[]
     )
+    
+    # Add Reset Filters button
+    if st.sidebar.button("🔄 Reset Filters"):
+        # Set session state flag to trigger reset in main function
+        st.session_state["reset_filters_clicked"] = True
+
+    # Add Load Data button
+    if st.sidebar.button("📊 Load Network Data", type="primary"):
+        # Set session state flag to trigger load in main function  
+        st.session_state["load_network_data_clicked"] = True
+
+    # System Info Section - Add after the controls
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown("### 🖥️ System Info")
+        
+        # Check database connection for status display
+        try:
+            db_connected = health_check()
+        except:
+            db_connected = False
+            
+        st.markdown(f"""
+        **Version:** 1.2.0
+        
+        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
+        
+        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Quick Navigation Links
+        st.markdown("---")
+        st.markdown("### 🔗 Quick Links")
+        
+        # Current page
+        st.markdown("**🌍 Network Overview**")
+        
+        # Other pages
+        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
+        st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
+        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
+        st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+        
+        # Return to home - fixing the path error
+        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
+        
+        # Logout option
+        st.markdown("---")
+        from src.utils.auth import logout
+        if st.button("🚪 Logout", type="primary"):
+            logout()
+            
+        st.caption("© 2023 MIR Networks")
     
     return {
         "start_time": start_time,
@@ -167,8 +268,23 @@ def main():
     # Get filters from sidebar
     filters = render_sidebar_controls()
     
-    # Load button
-    if st.sidebar.button("Load Network Data"):
+    # Handle Reset Filters button click
+    if st.session_state.get("reset_filters_clicked", False):
+        # Reset the flag
+        st.session_state["reset_filters_clicked"] = False
+        
+        # Clear session state data
+        st.session_state.pop("network_data", None)
+        st.session_state.pop("network_filters", None)
+        
+        # Rerun to reset UI
+        st.rerun()
+    
+    # Handle Load Network Data button click
+    if st.session_state.get("load_network_data_clicked", False):
+        # Reset the flag
+        st.session_state["load_network_data_clicked"] = False
+        
         with st.spinner("Loading network data..."):
             try:
                 # Fetch aggregated data from API

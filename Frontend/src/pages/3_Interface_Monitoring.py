@@ -15,7 +15,7 @@ from loguru import logger
 import requests
 
 # Updated imports for src directory structure
-from src.utils.qdrant_client import load_metadata  # Keep this for sidebar
+from src.utils.qdrant_client import load_metadata, health_check  # Added health_check for sidebar
 from src.utils.data_processing import (
     detect_flapping_interfaces, 
     analyze_interface_stability,
@@ -31,10 +31,10 @@ from src.utils.visualization import (
     create_interface_heatmap,
     create_interface_metrics_cards
 )
-from src.utils.auth import check_auth
+from src.utils.auth import check_auth, init_session_state, logout  # Added logout for sidebar
 
 # Backend API URL
-BACKEND_URL = "http://backend-api:8001" # Changed from backend-api:8001 to localhost:8001
+BACKEND_URL = "http://backend-api:8001" # Correct endpoint for backend API
 
 # Configure page
 st.set_page_config(
@@ -45,8 +45,37 @@ st.set_page_config(
 
 
 # --- Authentication Check ---
+init_session_state()  # Initialize session state
 check_auth()
 logger.info(f"User '{st.session_state.username}' accessed Interface Monitoring page.")
+
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
 
 # Configure logging
 logger.info("Loading Interface Monitoring Component")
@@ -86,10 +115,26 @@ def add_tooltip(text, tooltip):
 
 # Sidebar controls for interface monitoring
 def render_sidebar_controls():
-    st.sidebar.header("Interface Monitoring Controls")
+    # User Profile Section
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        st.header("👤 User Profile")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Username:** {st.session_state.username}
+        
+        **Role:** Network Administrator
+        
+        **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+        """)
+        
+        st.markdown("---")
+    
+    st.sidebar.header("🔌 Interface Monitoring Controls")
     
     # Time range selection
-    st.sidebar.subheader("Time Range")
+    st.sidebar.subheader("⏱️ Time Range")
     end_time = datetime.now()
     time_options = {
         "Last 6 hours": timedelta(hours=6),
@@ -103,10 +148,10 @@ def render_sidebar_controls():
     selected_time = st.sidebar.selectbox("Select time range", list(time_options.keys()))
     
     if selected_time == "Custom":
-        start_date = st.sidebar.date_input("Start date", end_time - timedelta(days=1))
-        start_time_input = st.sidebar.time_input("Start time", datetime.strptime("00:00", "%H:%M").time())
-        end_date = st.sidebar.date_input("End date", end_time)
-        end_time_input = st.sidebar.time_input("End time", datetime.strptime("23:59", "%H:%M").time())
+        start_date = st.sidebar.date_input("📅 Start date", end_time - timedelta(days=1))
+        start_time_input = st.sidebar.time_input("🕒 Start time", datetime.strptime("00:00", "%H:%M").time())
+        end_date = st.sidebar.date_input("📅 End date", end_time)
+        end_time_input = st.sidebar.time_input("🕒 End time", datetime.strptime("23:59", "%H:%M").time())
         
         start_time = datetime.combine(start_date, start_time_input)
         end_time = datetime.combine(end_date, end_time_input)
@@ -114,7 +159,7 @@ def render_sidebar_controls():
         start_time = end_time - time_options[selected_time]
     
     # Device filter options (focused on AGW devices with interface data)
-    st.sidebar.subheader("Device Filters")
+    st.sidebar.subheader("🔧 Device Filters")
     
     # Get devices that typically have interface data (AGW)
     if "agw" in metadata and "devices" in metadata["agw"]:
@@ -153,7 +198,7 @@ def render_sidebar_controls():
         interfaces = []
     
     # Analysis parameters
-    st.sidebar.subheader("Analysis Parameters")
+    st.sidebar.subheader("⚙️ Analysis Parameters")
     
     # Flapping detection parameters
     time_threshold = st.sidebar.slider(
@@ -188,6 +233,58 @@ def render_sidebar_controls():
         "48 hours": 48,
         "7 days": 168
     }[stability_window]
+    
+    # Action buttons
+    if st.sidebar.button("📊 Load Interface Data", type="primary"):
+        # Don't use 'pass' here as it would disconnect the button from the functionality
+        # The actual functionality will be handled in the main function
+        st.session_state["load_interface_data_clicked"] = True
+
+    if st.sidebar.button("🔄 Reset Filters"):
+        # Don't use 'pass' here as it would disconnect the button from the functionality
+        st.session_state["reset_filters_clicked"] = True
+    
+    # System Info Section
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown("### 🖥️ System Info")
+        
+        # Check database connection for status display
+        try:
+            db_connected = health_check()
+        except:
+            db_connected = False
+            
+        st.markdown(f"""
+        **Version:** 1.2.0
+        
+        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
+        
+        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Quick Navigation Links
+        st.markdown("---")
+        st.markdown("### 🔗 Quick Links")
+        
+        st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
+        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
+        # Current page
+        st.markdown("**🔌 Interface Monitoring**")
+        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
+        st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+        
+        # Return to home - fixing the path error
+        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
+        
+        # Logout option
+        st.markdown("---")
+        if st.button("🚪 Logout", type="primary"):
+            logout()
+            
+        st.caption("© 2023 MIR Networks")
     
     # Return all selected filters
     return {
@@ -271,8 +368,11 @@ def main():
     # Get filters from sidebar
     filters = render_sidebar_controls()
     
-    # Load Data button
-    if st.sidebar.button("Load Interface Data"):
+    # Handle the Load Interface Data button click using session state
+    if st.session_state.get("load_interface_data_clicked", False):
+        # Reset the flag
+        st.session_state["load_interface_data_clicked"] = False
+        
         # Show spinner during loading
         with st.spinner("Loading and processing interface data..."):
             # Load data and store in session state
@@ -286,6 +386,20 @@ def main():
                 st.warning("No interface data found with the selected filters.")
                 if "interface_data" in st.session_state:
                     del st.session_state["interface_data"]
+    
+    # Handle Reset Filters button click
+    if st.session_state.get("reset_filters_clicked", False):
+        # Reset the flag
+        st.session_state["reset_filters_clicked"] = False
+        
+        # Clear session state data
+        if "interface_data" in st.session_state:
+            del st.session_state["interface_data"]
+        if "interface_filters" in st.session_state:
+            del st.session_state["interface_filters"]
+        
+        # Rerun the app to reset the UI
+        st.rerun()
     
     # Check if we have data to analyze
     if "interface_data" in st.session_state and not st.session_state["interface_data"].empty:

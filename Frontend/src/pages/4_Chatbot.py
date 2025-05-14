@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 from loguru import logger
 # Import necessary functions from auth module
 from src.utils.auth import init_session_state, check_auth, logout
-from datetime import datetime
+from datetime import datetime, timedelta
+from src.utils.qdrant_client import health_check  # Added for sidebar system info
 
 # Load environment variables
 load_dotenv()
@@ -31,6 +32,34 @@ check_auth() # Check if user is logged in (using the backend token now), stops e
 # Log page access after successful auth check
 # Use get method for safety in case username isn't set for some reason
 logger.info(f"User '{st.session_state.get('username', 'Unknown')}' accessed Chatbot page.")
+
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
 
 # Function to parse collections from metadata file
 @st.cache_data(ttl=3600)  # Cache for 1 hour
@@ -358,7 +387,25 @@ def generate_mock_response(query, device, location):
 
 # --- Sidebar Setup ---
 with st.sidebar:
-    st.subheader("Chat Options & Context")
+    # User Profile Section first
+    st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+    st.header("👤 User Profile")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Display username
+    username = st.session_state.get('username', 'N/A')
+    st.markdown(f"""
+    **Username:** {username}
+    
+    **Role:** Network Administrator
+    
+    **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+    """)
+    
+    st.markdown("---")
+
+    # Then the existing chat options
+    st.subheader("💬 Chat Options & Context")
     st.markdown("Filter the context provided to the AI for more targeted answers.")
 
     # Load metadata for filters
@@ -367,7 +414,7 @@ with st.sidebar:
     # Location Filter
     location_options = ["All Locations"] + network_meta.get("locations", [])
     selected_location = st.selectbox(
-        "Filter by Location",
+        "📍 Filter by Location",
         options=location_options,
         index=0, # Default to "All Locations"
         key="selected_location", # Key used to store selection in session state
@@ -390,7 +437,7 @@ with st.sidebar:
         device_options.extend(network_meta.get("devices", []))
 
     selected_device = st.selectbox(
-        "Filter by Device",
+        "🔧 Filter by Device",
         options=device_options,
         # Try to preserve selection if it's still valid in the options list
         index=device_options.index(st.session_state.get("selected_device", "All Devices")) if st.session_state.get("selected_device") in device_options else 0,
@@ -398,41 +445,53 @@ with st.sidebar:
         help="Limit the AI's focus to a specific device."
     )
 
-    st.markdown("---")
-
     # Chat Actions
-    if st.button("Clear Chat History", key="clear_chat"):
+    if st.button("🔄 Clear Chat History", key="clear_chat"):
         st.session_state["messages"] = []
         st.session_state.pop("welcome_shown", None) # Remove flag to show welcome message again
         logger.info("Chat history cleared by user.")
         st.rerun() # Rerun to reflect the cleared history
 
-    # --- System Status / Health Check ---
+    # --- System Status Section ---
     st.markdown("---")
-    st.subheader("System Status")
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 🖥️ System Info")
     
-    # Display mock system status instead of checking API health
-    if st.button("Check System Status", key="check_system_status"):
-        st.success("Mock Network Monitoring System is online ✅")
-        st.info("Using local simulation mode - no backend API connection required")
-        st.json({
-            "status": "healthy",
-            "mode": "simulation",
-            "timestamp": datetime.now().isoformat(),
-            "service": "mock_network_monitor"
-        })
+    # Check database connection for status display
+    try:
+        db_connected = health_check()
+    except:
+        db_connected = False
+        
+    st.markdown(f"""
+    **Version:** 1.2.0
     
-    # --- User/Logout Section ---
+    **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
+    
+    **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
+    """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Quick Navigation Links
     st.markdown("---")
-    st.subheader("User")
-    # Safely display username
-    username = st.session_state.get('username', 'N/A')
-    st.write(f"👤 Logged in as: **{username}**")
-    if st.button("Logout", key="logout_chat"):
-        logout() # Call logout function from auth module
-
+    st.markdown("### 🔗 Quick Links")
+    
+    st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
+    st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
+    st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
+    # Current page
+    st.markdown("**🤖 AI Chatbot**")
+    st.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+    
+    # Return to home - fixing the path error
+    st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
+    
+    # Logout option
     st.markdown("---")
-    st.caption("NetOps AI Chatbot v1.2")
+    if st.button("🚪 Logout", type="primary", key="logout_chat"):
+        logout()
+        
+    st.caption("© 2023 MIR Networks")
 
 # --- Main Page Content ---
 st.title("🤖 AI Chatbot Interface")

@@ -8,7 +8,8 @@ import requests
 from loguru import logger
 from typing import Dict, Any
 import os
-from src.utils.auth import check_auth 
+from src.utils.auth import check_auth, init_session_state, logout  # Added logout for sidebar
+from src.utils.qdrant_client import health_check  # Added for system status
 
 # --- Page Configuration --- MUST BE FIRST STREAMLIT COMMAND
 st.set_page_config(
@@ -19,11 +20,40 @@ st.set_page_config(
 )
 
 # --- Authentication Check ---
+init_session_state()  # Initialize session state
 check_auth()
 logger.info(f"User '{st.session_state.username}' accessed AI Summary page.")
 
+# Custom CSS for sidebar styling
+def load_custom_css():
+    st.markdown("""
+    <style>
+        /* Custom sidebar styling */
+        .sidebar-header {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 25px;
+        }
+        /* Status indicators */
+        .status-success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Load custom CSS
+load_custom_css()
+
 # --- Configuration ---
-API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://localhost:8001')
+API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
 METADATA_PATH = os.getenv('METADATA_PATH', 'data/qdrant_db_metadata.json')
 CACHE_TTL = int(os.getenv('CACHE_TTL', '300'))
 API_TIMEOUT = 180
@@ -334,6 +364,22 @@ def display_api_analysis(data: Dict[str, Any]):
 # --- Sidebar Controls ---
 # ... (keep the existing render_sidebar function - no changes needed here) ...
 def render_sidebar():
+    # User Profile Section
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">', unsafe_allow_html=True)
+        st.header("👤 User Profile")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        **Username:** {st.session_state.username}
+        
+        **Role:** Network Administrator
+        
+        **Last Login:** {datetime.now().strftime("%Y-%m-%d %H:%M")}
+        """)
+        
+        st.markdown("---")
+    
     st.sidebar.header("⚙️ AI Summary Controls")
 
     # --- Collection Selection ---
@@ -515,30 +561,11 @@ def render_sidebar():
 
     gen_summary_disabled = api_is_unhealthy or not constructed_collection_name
     if st.sidebar.button("✨ Generate AI Summary", key="gen_ai_summary_btn", type="primary", disabled=gen_summary_disabled):
-        if constructed_collection_name:
-            summary_limit_val = st.session_state.get("ai_summary_limit", 30)
-            st.session_state['last_requested_summary_limit'] = summary_limit_val
-            common_filters = st.session_state.get('ai_filters', {})
-            payload = {
-                "collection_name": constructed_collection_name,
-                "limit": summary_limit_val,
-                "start_time": common_filters.get("start_time_unix"),
-                "end_time": common_filters.get("end_time_unix"),
-                "include_latest": include_latest_log,
-                "category": common_filters.get("category"),
-                "event_type": common_filters.get("event_type"),
-                "severity": common_filters.get("severity"),
-                "interface": common_filters.get("interface")
-            }
-            payload = {k: v for k, v in payload.items() if v is not None}
-            print(f"Payload for summary generation: {payload}")
-            with st.spinner(f"Generating AI summary for '{constructed_collection_name}'..."):
-                api_response = call_api("/generate_summary", payload)
-                st.session_state['ai_summary_result'] = api_response
-                st.session_state.pop('ai_detailed_result', None)
-                st.sidebar.success("Summary requested!")
-        else:
-             st.sidebar.error("Cannot generate summary without a selected collection.") # Added feedback
+        # Set session state flag and parameters for summary generation
+        st.session_state['generate_ai_summary_clicked'] = True
+        st.session_state['summary_collection_name'] = constructed_collection_name
+        st.session_state['summary_limit'] = st.session_state.get("ai_summary_limit", 30)
+        st.session_state['include_latest_log'] = include_latest_log
 
     if st.sidebar.button("🔄 Reset Filters & Data"):
         keys_to_clear = [
@@ -553,10 +580,51 @@ def render_sidebar():
             del st.session_state['api_healthy']
         st.rerun()
 
+    # System Info Section
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown("### 🖥️ System Info")
+        
+        # Check database connection for status display
+        try:
+            db_connected = health_check()
+        except:
+            db_connected = False
+            
+        st.markdown(f"""
+        **Version:** 1.2.0
+        
+        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
+        
+        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Quick Navigation Links
+        st.markdown("---")
+        st.markdown("### 🔗 Quick Links")
+        
+        st.page_link("pages/1_Network_Overview.py", label="🌍 Network Overview", icon="🌍")
+        st.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
+        st.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
+        st.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
+        # Current page
+        st.markdown("**🧠 AI Summary**")
+        
+        # Return to home - fixing the path error
+        st.page_link("main.py", label="🏠 Return to Home", icon="🏠")
+        
+        # Logout option
+        st.markdown("---")
+        if st.button("🚪 Logout", type="primary"):
+            logout()
+            
+        st.caption("© 2023 MIR Networks")
+
     return constructed_collection_name
 
 # --- Main Content ---
-# ... (keep the existing main function - no changes needed here) ...
 def main():
     st.title("🧠 AI-Powered Log Analysis")
     st.markdown("Generate AI summaries of network logs or analyze specific logs by ID or custom input.")
@@ -570,6 +638,40 @@ def main():
 
     # Render sidebar - this now uses the session state for disabling
     constructed_collection_name = render_sidebar()
+    
+    # Handle Generate AI Summary button click
+    if st.session_state.get('generate_ai_summary_clicked', False):
+        # Reset the flag
+        st.session_state['generate_ai_summary_clicked'] = False
+        
+        # Get parameters from session state
+        collection_name = st.session_state.get('summary_collection_name')
+        summary_limit_val = st.session_state.get('summary_limit', 30)
+        include_latest = st.session_state.get('include_latest_log', False)
+        
+        if collection_name:
+            st.session_state['last_requested_summary_limit'] = summary_limit_val
+            common_filters = st.session_state.get('ai_filters', {})
+            payload = {
+                "collection_name": collection_name,
+                "limit": summary_limit_val,
+                "start_time": common_filters.get("start_time_unix"),
+                "end_time": common_filters.get("end_time_unix"),
+                "include_latest": include_latest,
+                "category": common_filters.get("category"),
+                "event_type": common_filters.get("event_type"),
+                "severity": common_filters.get("severity"),
+                "interface": common_filters.get("interface")
+            }
+            payload = {k: v for k, v in payload.items() if v is not None}
+            logger.info(f"Payload for summary generation: {payload}")
+            with st.spinner(f"Generating AI summary for '{collection_name}'..."):
+                api_response = call_api("/generate_summary", payload)
+                st.session_state['ai_summary_result'] = api_response
+                st.session_state.pop('ai_detailed_result', None)
+                st.success("Summary requested!")
+        else:
+            st.error("Cannot generate summary without a selected collection.")
 
     # Check API status from session state and display warning if needed
     api_ok = st.session_state.get('api_healthy', False)
