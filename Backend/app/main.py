@@ -16,6 +16,7 @@ from app.utils.qdrant_utils import setup_qdrant
 # Import routers
 from app.routers.system_router import router as system_router 
 from app.routers.ai_summary_router import router as ai_summary_router
+from app.routers.network_overview_router import router as network_overview_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -55,6 +56,7 @@ async def shutdown_event():
 # Include routers
 app.include_router(system_router)
 app.include_router(ai_summary_router)
+app.include_router(network_overview_router)
 
 # Root endpoint
 @app.get("/")
@@ -68,7 +70,9 @@ async def root():
             "health": "/system/health",
             "info": "/system/info",
             "summary": "/api/v1/generate_summary",
-            "analyze": "/api/v1/analyze_logs"
+            "analyze": "/api/v1/analyze_logs",
+            "network": "/api/v1/network/aggregated_data",
+            "metadata": "/api/v1/network/metadata"
         }
     }
 

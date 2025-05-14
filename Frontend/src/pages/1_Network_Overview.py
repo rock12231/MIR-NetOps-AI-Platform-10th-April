@@ -9,12 +9,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from loguru import logger
+import requests
+import json
 
 # Import utilities
-from src.utils.qdrant_client import get_qdrant_client, load_metadata, get_collections, fetch_aggregated_network_data
+from src.utils.qdrant_client import load_metadata  # Keep this for sidebar
 from src.utils.data_processing import categorize_interface_events, calculate_network_health, analyze_device_distribution, create_location_health_matrix
 from src.utils.visualization import COLOR_SCALES, create_network_topology_map, create_event_trend_chart, create_location_heatmap
 from src.utils.auth import check_auth
+
+# Backend API URL
+BACKEND_URL = "http://backend-api:8001"  # Update this with your actual backend URL
 
 # --- Authentication Check ---
 check_auth()
@@ -87,6 +92,73 @@ def render_sidebar_controls():
         "locations": selected_locations if selected_locations else None
     }
 
+# Function to call backend API
+def call_api(endpoint, params=None):
+    """
+    Call the backend API and handle errors.
+    
+    Args:
+        endpoint (str): API endpoint path (without base URL)
+        params (dict, optional): Query parameters
+        
+    Returns:
+        dict or None: API response or None on error
+    """
+    try:
+        url = f"{BACKEND_URL}{endpoint}"
+        response = requests.get(url, params=params)
+        response.raise_for_status()  # Raise exception for 4XX/5XX responses
+        return response.json()
+    except requests.RequestException as e:
+        st.error(f"API Error: {str(e)}")
+        logger.error(f"API Error ({endpoint}): {str(e)}")
+        return None
+
+# Function to fetch aggregated network data from API
+def fetch_aggregated_network_data_from_api(start_time, end_time, device_types=None, locations=None):
+    """
+    Fetch aggregated network data from the backend API.
+    
+    Args:
+        start_time (datetime): Start time for filtering
+        end_time (datetime): End time for filtering
+        device_types (list, optional): List of device types to include
+        locations (list, optional): List of locations to include
+        
+    Returns:
+        pandas.DataFrame: DataFrame with network data
+    """
+    # Prepare parameters
+    params = {
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+    }
+    
+    # Add device types if specified
+    if device_types:
+        params["device_types"] = device_types
+        
+    # Add locations if specified
+    if locations:
+        params["locations"] = locations
+    
+    # Make API call
+    response = call_api("/api/v1/network/aggregated_data", params)
+    
+    # Process response
+    if response and "data" in response:
+        df = pd.DataFrame(response["data"])
+        
+        # Ensure 'timestamp_dt' column exists
+        if 'timestamp' in df.columns:
+            df['timestamp_dt'] = pd.to_datetime(df['timestamp'], unit='s')
+            
+        logger.info(f"Loaded {len(df)} records from API")
+        return df
+    else:
+        logger.warning("No data returned from API")
+        return pd.DataFrame()
+
 # Page title
 st.title("🌍 Network Overview")
 st.markdown("High-level insights across the entire network infrastructure.")
@@ -99,8 +171,8 @@ def main():
     if st.sidebar.button("Load Network Data"):
         with st.spinner("Loading network data..."):
             try:
-                # Fetch aggregated data
-                network_data = fetch_aggregated_network_data(
+                # Fetch aggregated data from API
+                network_data = fetch_aggregated_network_data_from_api(
                     start_time=filters["start_time"],
                     end_time=filters["end_time"],
                     device_types=filters["device_types"],
