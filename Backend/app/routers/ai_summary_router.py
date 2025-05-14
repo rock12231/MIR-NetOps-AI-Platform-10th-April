@@ -1,3 +1,9 @@
+"""
+Network Log Analysis Router
+
+This module contains API endpoints for analyzing network logs using AI.
+It provides functionality for generating summaries and analyzing log entries.
+"""
 import uuid
 import json
 import logging
@@ -6,8 +12,8 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException
-from qdrant_client.http import models as rest_models # Qdrant specific models
-from qdrant_client.http.models import Filter, FieldCondition, Range, OrderBy # Qdrant specific models
+from qdrant_client.http import models as rest_models
+from qdrant_client.http.models import Filter, FieldCondition, Range, OrderBy
 
 from app.core.config import qdrant, llm, token_logger
 from app.core.models import AnalyzeLogsRequest, SummaryRequest
@@ -17,7 +23,6 @@ from app.utils.qdrant_utils import (
     parse_collection_name_backend
 )
 from app.utils.llm_utils import load_prompt_template, clean_and_parse_json, count_tokens
-from app.utils.analysis_utils import detect_flapping_interfaces, analyze_interface_stability
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Network Log Analysis"])
@@ -28,6 +33,12 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 @router.get("/collections")
 async def get_collections_endpoint():
+    """
+    Get information about available collections in Qdrant.
+    
+    Returns:
+        Dict: Status and list of collections with their details
+    """
     logger.info("Received request for /api/v1/collections")
     try:
         collection_stats = []
@@ -36,7 +47,7 @@ async def get_collections_endpoint():
 
         for collection_name in AVAILABLE_COLLECTIONS:
             points_count = 0
-            status = "listed_not_found" # Default status if not found in Qdrant's list
+            status = "listed_not_found"
             
             try:
                 if collection_name in qdrant_collection_names:
@@ -50,22 +61,27 @@ async def get_collections_endpoint():
                 device_type, device_id, location, type_suffix = parse_collection_name_backend(collection_name)
                 collection_stats.append({
                     "name": collection_name,
-                    "points_count": points_count if status == "found" else 0, # Show 0 if not found, or could be None
+                    "points_count": points_count if status == "found" else 0,
                     "status": status,
                     "device_type": device_type,
                     "device_id": device_id,
                     "location": location,
                     "type_suffix": type_suffix
                 })
-            except Exception as col_info_e: # Catch errors during individual collection processing
+            except Exception as col_info_e:
                 logger.error(f"Error processing collection '{collection_name}': {col_info_e}", exc_info=True)
                 device_type, device_id, location, type_suffix = parse_collection_name_backend(collection_name)
                 collection_stats.append({
-                    "name": collection_name, "points_count": None, "status": "error_retrieving_info",
-                    "device_type": device_type, "device_id": device_id, "location": location, "type_suffix": type_suffix
+                    "name": collection_name, 
+                    "points_count": None, 
+                    "status": "error_retrieving_info",
+                    "device_type": device_type, 
+                    "device_id": device_id, 
+                    "location": location, 
+                    "type_suffix": type_suffix
                 })
         
-        # Sort by points_count (descending), handling None values by treating them as 0 for sorting
+        # Sort by points_count (descending)
         collection_stats.sort(key=lambda x: x.get("points_count", 0) or 0, reverse=True)
         return {"status": "success", "collections": collection_stats}
 
@@ -76,6 +92,17 @@ async def get_collections_endpoint():
 
 @router.post("/generate_summary")
 async def generate_summary(request: SummaryRequest):
+    """
+    Generate a summary analysis of network logs.
+    
+    Retrieves logs from a specified collection, applies filters, and uses an LLM to analyze them.
+    
+    Args:
+        request: SummaryRequest containing collection and filter parameters
+        
+    Returns:
+        Dict: Analysis results including summary, anomalies, and recommendations
+    """
     collection_name = request.collection_name or DEFAULT_COLLECTION
     limit = request.limit
     start_time = request.start_time
@@ -164,12 +191,7 @@ async def generate_summary(request: SummaryRequest):
     seen_ids = set()
     unique_log_entries = []
     for log_payload in log_entries_payloads:
-        # Assuming logs have a unique ID in their payload, e.g., '_id' or 'log_id'
-        # If not, can use hash of content, or rely on Qdrant point ID if available and stable.
-        # For this example, let's assume qdrant point ID was part of payload or use a composite key.
-        # The original `_qdrant_id` is not in payload by default. `id=point.id`
-        # Here, we'll use a simple heuristic or assume a unique field exists.
-        # Let's assume `raw_log` + `timestamp` is reasonably unique for deduplication.
+        # Create a unique key from raw_log and timestamp for deduplication
         log_unique_key = (log_payload.get("raw_log"), log_payload.get("timestamp"))
         if log_unique_key not in seen_ids:
             seen_ids.add(log_unique_key)
@@ -245,7 +267,7 @@ async def generate_summary(request: SummaryRequest):
     logger.info(f"RID: {request_id} - Input token count approx: {input_token_count} for provider: {LLM_PROVIDER}")
 
     try:
-        response = llm.complete(formatted_prompt)
+        response = llm["complete"](formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
         logger.error(f"RID: {request_id} - LLM API call failed: {e}", exc_info=True)
@@ -289,6 +311,18 @@ async def generate_summary(request: SummaryRequest):
 
 @router.post("/analyze_logs")
 async def analyze_logs_detailed(request: AnalyzeLogsRequest):
+    """
+    Analyze specific log entries in detail.
+    
+    Takes a set of log IDs or directly provided logs and performs in-depth analysis
+    using LLM to identify patterns, anomalies, and correlations between logs.
+    
+    Args:
+        request: AnalyzeLogsRequest containing log IDs or log data
+        
+    Returns:
+        Dict: Detailed analysis of the provided logs
+    """
     log_ids = request.log_ids or []
     custom_logs = request.logs or [] # Logs provided directly in the request
     collection_name = request.collection_name or DEFAULT_COLLECTION
@@ -334,9 +368,6 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
     if not log_entries:
         raise HTTPException(status_code=404, detail="No valid logs found or provided for analysis.")
 
-    # Deduplicate, similar to generate_summary if needed, though less likely here
-    # For this endpoint, assume logs are distinct or duplication is acceptable
-
     prompt_template_str = load_prompt_template()
     # Using the same schema as generate_summary for consistency in LLM output
     model_schema = {
@@ -369,7 +400,7 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
     logger.info(f"RID: {request_id} - Input token count for detailed analysis: {input_token_count} for provider: {LLM_PROVIDER}")
 
     try:
-        response = llm.complete(formatted_prompt)
+        response = llm["complete"](formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
         logger.error(f"RID: {request_id} - LLM API call failed for detailed analysis: {e}", exc_info=True)

@@ -1,7 +1,12 @@
+"""
+Configuration module for the Network Log Analysis API.
+
+Handles environment variables, logging setup, and initializes connections
+to external services like Qdrant and LLM providers.
+"""
 import os
 import logging
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, Optional, Callable
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from llama_index.llms.ollama import Ollama
@@ -48,182 +53,157 @@ token_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 token_logger.addHandler(token_handler)
 token_logger.setLevel(logging.INFO)
 
-# Base LLM wrapper class for consistency across providers
-class LLMWrapper(ABC):
-    """Base abstract class for language model wrappers"""
-    
-    def __init__(
-        self, 
-        model: str, 
-        temperature: float = 0.1, 
-        max_tokens: int = 8192
-    ):
-        self.model_name = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-    
-    @abstractmethod
-    def complete(self, prompt: str) -> str:
-        """Generate a completion for the given prompt"""
-        pass
-    
-    @abstractmethod
-    def test_connection(self) -> bool:
-        """Test the connection to the language model"""
-        pass
-    
-    def get_provider_name(self) -> str:
-        """Return the name of the provider"""
-        return self.__class__.__name__.replace("Wrapper", "")
+# Function-based LLM implementation
 
-# Gemini wrapper class
-class GeminiWrapper(LLMWrapper):
-    """Wrapper for Google's Gemini API"""
+def setup_gemini(model_name: str, api_key: str, temperature: float = 0.1, max_tokens: int = 8192):
+    """
+    Set up and configure a Gemini LLM client
     
-    def __init__(
-        self, 
-        model: str, 
-        api_key: str, 
-        temperature: float = 0.1, 
-        max_tokens: int = 8192
-    ):
-        super().__init__(model, temperature, max_tokens)
-        self.api_key = api_key
+    Args:
+        model_name: The name of the Gemini model to use
+        api_key: The Gemini API key
+        temperature: Sampling temperature (0.0 to 1.0)
+        max_tokens: Maximum tokens to generate
         
-        # Configure the Gemini API
-        genai.configure(api_key=api_key)
+    Returns:
+        Dict containing the model and helper functions
+    """
+    # Configure the Gemini API
+    genai.configure(api_key=api_key)
+    
+    # Get list of available models and find valid one
+    available_models = genai.list_models()
+    model_names = [model.name.split('/')[-1] for model in available_models]
+    logger.info(f"Available Gemini models: {', '.join(model_names)}")
+    
+    # Check if requested model exists, use fallback if not
+    if model_name not in model_names:
+        logger.warning(f"Model '{model_name}' not found. Available models: {', '.join(model_names)}")
         
-        # Verify the model exists and list available models if it doesn't
-        self._verify_model_and_setup()
+        # Try to find a suitable alternative
+        for fallback in ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"]:
+            if fallback in model_names:
+                logger.info(f"Using fallback model: {fallback}")
+                model_name = fallback
+                break
     
-    def _verify_model_and_setup(self):
-        try:
-            # Get list of available models
-            available_models = genai.list_models()
-            model_names = [model.name.split('/')[-1] for model in available_models]
-            logger.info(f"Available Gemini models: {', '.join(model_names)}")
-            
-            # Check if our model is in the list
-            if self.model_name not in model_names:
-                # If the model isn't available, try to use a fallback
-                logger.warning(f"Model '{self.model_name}' not found. Available models: {', '.join(model_names)}")
-                
-                # Try to find a suitable alternative
-                for fallback in ["gemini-1.5-flash", "gemini-pro", "gemini-1.0-pro"]:
-                    if fallback in model_names:
-                        logger.info(f"Using fallback model: {fallback}")
-                        self.model_name = fallback
-                        break
-            
-            # Initialize the model
-            self.model = genai.GenerativeModel(
-                model_name=self.model_name,
-                generation_config={
-                    "temperature": self.temperature,
-                    "max_output_tokens": self.max_tokens,
-                }
-            )
-            logger.info(f"Successfully initialized Gemini model: {self.model_name}")
-            
-        except Exception as e:
-            logger.error(f"Error setting up Gemini: {e}")
-            raise
+    # Initialize the model
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        generation_config={
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        }
+    )
+    logger.info(f"Successfully initialized Gemini model: {model_name}")
     
-    def complete(self, prompt: str) -> str:
+    # Define completion function
+    def complete(prompt: str) -> str:
         try:
-            response = self.model.generate_content(prompt)
+            response = model.generate_content(prompt)
             return response.text
         except Exception as e:
             logger.error(f"Error generating content with Gemini: {e}")
-            # Return a fallback response
             return f"Error generating response: {str(e)}"
-    
-    def test_connection(self) -> bool:
+            
+    # Define test function
+    def test_connection() -> bool:
         try:
-            response = self.complete("Test connection")
+            response = complete("Test connection")
             logger.info(f"Gemini test response: {response[:50]}...")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Gemini: {e}")
             return False
-
-# Ollama wrapper class
-class OllamaWrapper(LLMWrapper):
-    """Wrapper for Ollama API"""
     
-    def __init__(
-        self, 
-        model: str, 
-        base_url: str, 
-        temperature: float = 0.1, 
-        max_tokens: int = 8192
-    ):
-        super().__init__(model, temperature, max_tokens)
-        self.base_url = base_url
+    # Return model config
+    return {
+        "model_name": model_name,
+        "model": model,
+        "provider": "gemini",
+        "complete": complete,
+        "test_connection": test_connection
+    }
+
+def setup_ollama(model_name: str, base_url: str, temperature: float = 0.1, max_tokens: int = 8192):
+    """
+    Set up and configure an Ollama LLM client
+    
+    Args:
+        model_name: The name of the Ollama model to use
+        base_url: The Ollama API base URL
+        temperature: Sampling temperature (0.0 to 1.0)
+        max_tokens: Maximum tokens to generate
         
-        # Initialize the Ollama client
-        self._setup_client()
-    
-    def _setup_client(self):
-        try:
-            self.client = Ollama(
-                model=self.model_name,
-                base_url=self.base_url,
-                temperature=self.temperature,
-                request_timeout=3600.0
-            )
-            logger.info(f"Initialized Ollama client for model '{self.model_name}' at {self.base_url}")
-        except Exception as e:
-            logger.error(f"Error setting up Ollama client: {e}")
-            raise
-    
-    def complete(self, prompt: str) -> str:
-        try:
-            response = self.client.complete(prompt)
-            return str(response)
-        except Exception as e:
-            logger.error(f"Error generating content with Ollama: {e}")
-            return f"Error generating response: {str(e)}"
-    
-    def test_connection(self) -> bool:
-        try:
-            response = self.complete("Test connection")
-            logger.info(f"Ollama test response: {response[:50]}...")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to Ollama: {e}")
-            return False
+    Returns:
+        Dict containing the model and helper functions
+    """
+    # Initialize Ollama client
+    try:
+        client = Ollama(
+            model=model_name,
+            base_url=base_url,
+            temperature=temperature,
+            request_timeout=3600.0
+        )
+        logger.info(f"Initialized Ollama client for model '{model_name}' at {base_url}")
+        
+        # Define completion function
+        def complete(prompt: str) -> str:
+            try:
+                response = client.complete(prompt)
+                return str(response)
+            except Exception as e:
+                logger.error(f"Error generating content with Ollama: {e}")
+                return f"Error generating response: {str(e)}"
+        
+        # Define test function
+        def test_connection() -> bool:
+            try:
+                response = complete("Test connection")
+                logger.info(f"Ollama test response: {response[:50]}...")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to connect to Ollama: {e}")
+                return False
+        
+        # Return model config
+        return {
+            "model_name": model_name,
+            "model": client,
+            "provider": "ollama",
+            "complete": complete,
+            "test_connection": test_connection
+        }
+        
+    except Exception as e:
+        logger.error(f"Error setting up Ollama client: {e}")
+        raise
 
-# Factory function to create the appropriate LLM wrapper
-def create_llm_wrapper() -> LLMWrapper:
-    """Create and return the appropriate LLM wrapper based on environment configuration"""
-    
+# Initialize LLM based on provider
+try:
     if LLM_PROVIDER == "ollama":
-        logger.info(f"Creating Ollama wrapper for model '{LLM_MODEL}' at {OLLAMA_URL}")
-        return OllamaWrapper(
-            model=LLM_MODEL,
+        logger.info(f"Setting up Ollama model '{LLM_MODEL}' at {OLLAMA_URL}")
+        llm = setup_ollama(
+            model_name=LLM_MODEL,
             base_url=OLLAMA_URL,
             temperature=0.10,
             max_tokens=8192
         )
     else:  # Default to Gemini
-        logger.info(f"Creating Gemini wrapper for model '{GEMINI_MODEL}'")
-        return GeminiWrapper(
-            model=GEMINI_MODEL,
+        logger.info(f"Setting up Gemini model '{GEMINI_MODEL}'")
+        llm = setup_gemini(
+            model_name=GEMINI_MODEL,
             api_key=GEMINI_API_KEY,
             temperature=0.10,
             max_tokens=8192
         )
-
-# Create the LLM wrapper instance
-try:
-    llm = create_llm_wrapper()
     
     # Test the connection
-    if not llm.test_connection():
-        raise ConnectionError(f"Failed to establish connection with {llm.get_provider_name()} LLM")
+    if not llm["test_connection"]():
+        raise ConnectionError(f"Failed to establish connection with {llm['provider']} LLM")
     
-    logger.info(f"Successfully connected to {llm.get_provider_name()} model '{llm.model_name}'")
+    logger.info(f"Successfully connected to {llm['provider']} model '{llm['model_name']}'")
 except Exception as e:
     logger.error(f"Failed to initialize LLM service ({LLM_PROVIDER}): {e}", exc_info=True)
     raise
