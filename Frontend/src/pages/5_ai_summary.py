@@ -1,4 +1,4 @@
-# pages/5_ai_summary.py
+# pages/5_AI_Summary.py
 import streamlit as st  # Keep streamlit import first
 import pandas as pd
 import plotly.express as px
@@ -26,23 +26,6 @@ logger.info(f"User '{st.session_state.username}' accessed AI Summary page.")
 # Backend API URL for system health check
 API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
 
-# Function to check health status
-def health_check():
-    """
-    Check system health by calling the health API.
-    
-    Returns:
-        bool: True if system is healthy, False otherwise
-    """
-    try:
-        response = requests.get(f"{API_BASE_URL}/system/health")
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("status") == "healthy"
-        return False
-    except:
-        logger.error("Failed to connect to health check API")
-        return False
 
 # Custom CSS for sidebar styling
 def load_custom_css():
@@ -586,19 +569,7 @@ def render_sidebar():
             del st.session_state['api_healthy']
         st.rerun()
 
-    # System Info Section
     with st.sidebar:
-        st.markdown("---")
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown("### 🖥️ System Info")
-        
-        st.markdown(f"""
-        **Version:** 1.2.0
-        
-        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
         # Logout option
         st.markdown("---")
         if st.button("🚪 Logout", type="primary"):
@@ -777,4 +748,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-# END OF FILE 5_ai_summary.py
+# END OF FILE 5_AI_Summary.py

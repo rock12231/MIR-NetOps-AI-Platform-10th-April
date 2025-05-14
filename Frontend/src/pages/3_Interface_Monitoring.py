@@ -301,27 +301,7 @@ def render_sidebar_controls():
         # Don't use 'pass' here as it would disconnect the button from the functionality
         st.session_state["reset_filters_clicked"] = True
     
-    # System Info Section
     with st.sidebar:
-        st.markdown("---")
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown("### 🖥️ System Info")
-        
-        # Check database connection for status display
-        try:
-            db_connected = health_check()
-        except:
-            db_connected = False
-            
-        st.markdown(f"""
-        **Version:** 1.2.0
-        
-        **Database:** {'<span class="status-success">Connected ✅</span>' if db_connected else '<span class="status-error">Disconnected ❌</span>'}
-        
-        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
         # Logout option
         st.markdown("---")
         if st.button("🚪 Logout", type="primary"):

@@ -324,19 +324,7 @@ def render_sidebar_controls():
         st.session_state["search_query"] = search_query
         st.session_state["search_k"] = search_k
     
-    # System Info Section - Update to remove health check
     with st.sidebar:
-        st.markdown("---")
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown("### 🖥️ System Info")
-        
-        st.markdown(f"""
-        **Version:** 1.2.0
-        
-        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
         # Logout option
         st.markdown("---")
         if st.button("🚪 Logout", type="primary"):

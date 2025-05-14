@@ -181,30 +181,18 @@ def render_sidebar_controls():
         options=locations,
         default=[]
     )
-    
-    # Add Reset Filters button
-    if st.sidebar.button("🔄 Reset Filters"):
-        # Set session state flag to trigger reset in main function
-        st.session_state["reset_filters_clicked"] = True
 
     # Add Load Data button
     if st.sidebar.button("📊 Load Network Data", type="primary"):
         # Set session state flag to trigger load in main function  
         st.session_state["load_network_data_clicked"] = True
 
-    # System Info Section - Update to remove health check
+    # Add Reset Filters button
+    if st.sidebar.button("🔄 Reset Filters"):
+        # Set session state flag to trigger reset in main function
+        st.session_state["reset_filters_clicked"] = True
+
     with st.sidebar:
-        st.markdown("---")
-        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-        st.markdown("### 🖥️ System Info")
-            
-        st.markdown(f"""
-        **Version:** 1.2.0
-        
-        **Last Update:** {(datetime.now() - timedelta(hours=4)).strftime("%Y-%m-%d %H:%M")}
-        """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
         # Logout option
         st.markdown("---")
         if st.button("🚪 Logout", type="primary"):

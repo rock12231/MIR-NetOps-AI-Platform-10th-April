@@ -1,9 +1,4 @@
 # Main.py
-"""
-Network Monitoring Dashboard - Main Application.
-Multipage Streamlit application for monitoring network devices.
-"""
-
 import streamlit as st
 import os
 import pandas as pd
@@ -12,8 +7,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 import requests
 import json
-# Removed health_check from import
-from src.utils.qdrant_client import get_qdrant_client
+
 # Import specific functions needed
 from src.utils.auth import init_session_state, login, logout, check_auth
 
@@ -22,23 +16,38 @@ API_BASE_URL = os.getenv('BACKEND_API_BASE_URL', 'http://backend-api:8001')
 
 # Add API-based health check function
 def health_check():
-    """
-    Check system health by calling the health API.
-    
-    Returns:
-        bool: True if system is healthy, False otherwise
-    """
     try:
         response = requests.get(f"{API_BASE_URL}/system/health")
+        
         if response.status_code == 200:
+            st.session_state['api_healthy'] = (response.status_code == 200 and response.json().get("status") == "healthy")
             data = response.json()
-            logger.info(f"Health check response: {data}")
-            return data.get("status") == "healthy"
-        logger.warning(f"Health check failed with status code: {response.status_code}")
+            return data
+            # {"status": "healthy","qdrant_status": "ok","llm_status": "ok"}
+        else:
+            st.session_state['api_healthy'] = False
+            logger.warning(f"Health check failed with status code: {response.status_code}")
+            return False
+        logger.info(f"API Health Check Result: {st.session_state['api_healthy']}")
         return False
     except Exception as e:
         logger.error(f"Failed to connect to health check API: {str(e)}")
         return False
+
+def get_system_info():
+    try:
+        response = requests.get(f"{API_BASE_URL}/system/info")
+        if response.status_code == 200:
+            data = response.json()
+            logger.info(f"System info response: {data}")
+            return data
+            # {"version":"1.0.0","qdrant":{"collections":[{"name":"router_agw_nyc_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_dgw_tokyo_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_dgw71_pr_re0_log_vector","vectors_count":null,"points_count":131,"status":"available"},{"name":"router_agw_london_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_dgw71_flfrd_re0_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_fw66_va2_log_vector","vectors_count":null,"points_count":29,"status":"available"},{"name":"router_fw66_dupt_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_fw_tokyo_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_new_fw67_qcmtl_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_agw_tokyo_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_dgw70_baal_re0_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_vadc_nyc_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw67_wlfdle_log_vector","vectors_count":null,"points_count":2,"status":"available"},{"name":"router_fw_london_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw66_wlfdle_log_vector","vectors_count":null,"points_count":2,"status":"available"},{"name":"router_dgw71_grnsbr_re0_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_fw67_nbmn_log_vector","vectors_count":null,"points_count":2,"status":"available"},{"name":"router_dgw70_pr_re0_log_vector","vectors_count":null,"points_count":136,"status":"available"},{"name":"router_dgw70_hnsn_re0_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_vadc_london_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw66_ms1_log_vector","vectors_count":null,"points_count":2,"status":"available"},{"name":"router_dgw_nyc_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_agw66_ym_log_vector","vectors_count":null,"points_count":8959,"status":"available"},{"name":"router_fw66_ed2_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_dgw_london_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw66_to3_log_vector","vectors_count":null,"points_count":3,"status":"available"},{"name":"router_fw67_va2_log_vector","vectors_count":null,"points_count":17,"status":"available"},{"name":"router_fw67_ms1_log_vector","vectors_count":null,"points_count":4,"status":"available"},{"name":"router_dgw71_rchrd_re0_log_vector","vectors_count":null,"points_count":695,"status":"available"},{"name":"router_new_fw66_qcmtl_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_vadc66a_ml02_log_vector","vectors_count":null,"points_count":3807,"status":"available"},{"name":"router_fw67_dupt_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_fw67_ed2_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_dgw70_slnt_re0_log_vector","vectors_count":null,"points_count":1,"status":"available"},{"name":"router_fw66_nbmn_log_vector","vectors_count":null,"points_count":2,"status":"available"},{"name":"router_fw66_ym_log_vector","vectors_count":null,"points_count":35150,"status":"available"},{"name":"router_vadc_tokyo_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw_nyc_log_vector","vectors_count":null,"points_count":0,"status":"available"},{"name":"router_fw67_to3_log_vector","vectors_count":null,"points_count":2,"status":"available"}],"status":"available"},"llm":{"model_name":"gemini-2.0-flash","provider":"gemini"}}
+        logger.warning(f"Failed to fetch system info with status code: {response.status_code}")
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to connect to system info API: {str(e)}")
+        return {}
+# Initialize Qdrant client
 
 # --- Page Configuration --- MUST BE FIRST STREAMLIT COMMAND
 st.set_page_config(
@@ -245,20 +254,44 @@ def main():
     # )
     # st.plotly_chart(fig, use_container_width=True)
 
-    # Check connection to Qdrant
-    st.subheader("⚡ System Status")
-    with st.spinner("Checking database connection..."):
-        try:
-            if health_check():
-                st.markdown('<p><span class="status-success">✅ Connected to Qdrant vector database</span></p>', unsafe_allow_html=True)
-                logger.info("Qdrant health check successful.")
-            else:
-                st.markdown('<p><span class="status-error">❌ Failed to connect to Qdrant database</span> - Data fetching may fail.</p>', unsafe_allow_html=True)
-                logger.error("Qdrant health check failed.")
-        except Exception as e:
-            st.markdown(f'<p><span class="status-error">❌ Error connecting to Qdrant:</span> {e}</p>', unsafe_allow_html=True)
-            logger.exception("Exception during Qdrant health check.")
-
+    # System Status and Information in columns
+    status_col1, status_col2 = st.columns(2)
+    
+    with status_col1:
+        # Check connection to Qdrant
+        st.subheader("⚡ System Status")
+        with st.spinner("Checking backend connection..."):
+            try:
+                if health_check():
+                    st.markdown('<p><span class="status-success">✅ Connected to Qdrant vector database</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-success">✅ Connected to LLM</span></p>', unsafe_allow_html=True)
+                    logger.info("Qdrant health check successful.")
+                else:
+                    st.markdown('<p><span class="status-error">❌ Failed to connect to Qdrant vector database</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-error">❌ Failed to connect to LLM</span></p>', unsafe_allow_html=True)
+                    logger.error("Qdrant health check failed.")
+            except Exception as e:
+                st.markdown(f'<p><span class="status-error">❌ Error connecting to Qdrant:</span> {e}</p>', unsafe_allow_html=True)
+                logger.exception("Exception during Qdrant health check.")
+    
+    with status_col2:
+        # Check system information
+        st.subheader("⚡ System Information")
+        with st.spinner("Fetching system info..."):
+            try:
+                system_info = get_system_info()
+                if system_info:
+                    st.markdown('<p><span class="status-success">✅ Version : '+system_info["version"]+'</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-success">✅ Qdrant Status : '+ system_info["qdrant"]["status"]+'</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-success">✅ Qdrant Collections : '+ str(len(system_info["qdrant"]["collections"])) +'</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-success">✅ LLM Model : '+ system_info["llm"]["model_name"] +' Provider : '+ system_info["llm"]["provider"]+')</span></p>', unsafe_allow_html=True)
+                    logger.info("System info fetched successfully.")
+                else:
+                    st.markdown('<p><span class="status-error">❌ Failed to fetch system info</span></p>', unsafe_allow_html=True)
+                    logger.error("Failed to fetch system info.")
+            except Exception as e:
+                st.markdown(f'<p><span class="status-error">❌ Error fetching system info:</span> {e}</p>', unsafe_allow_html=True)
+                logger.exception("Exception during system info fetch.")
 
     # Navigation Cards
     st.subheader("🧭 Dashboard Navigation")
@@ -319,7 +352,7 @@ def main():
             "AI Summary", 
             "🧠", 
             "Generate AI-powered summaries and analyses of network logs to quickly understand system status and issues.",
-            "pages/5_ai_summary.py"
+            "pages/5_AI_Summary.py"
         ), 
         unsafe_allow_html=True
     )

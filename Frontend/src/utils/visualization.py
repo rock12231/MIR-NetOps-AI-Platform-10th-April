@@ -1,9 +1,4 @@
 # src/utils/visualization.py
-"""
-Visualization utilities for the Network Monitoring Dashboard.
-Provides functions for creating charts and visualizations.
-"""
-
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
