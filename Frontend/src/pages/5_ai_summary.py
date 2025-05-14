@@ -49,6 +49,17 @@ def load_custom_css():
             color: #dc3545;
             font-weight: bold;
         }
+        /* Model selection toggle */
+        .model-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 0;
+        }
+        .model-label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -124,6 +135,12 @@ def get_default_metadata():
 # --- API Interaction Functions ---
 def call_api(endpoint: str, payload: dict) -> dict:
     url = f"{API_BASE_URL}/api/v1{endpoint}"
+    
+    # Add model selection from session state
+    if 'selected_model' in st.session_state:
+        payload['model_provider'] = st.session_state.selected_model
+        logger.info(f"Using model provider: {payload['model_provider']}")
+    
     try:
         payload_keys_log = {k: type(v) for k, v in payload.items()}
         logger.info(f"Calling API endpoint: {url} with payload keys/types: {payload_keys_log}")
@@ -197,9 +214,32 @@ def display_api_analysis(data: Dict[str, Any]):
                 for log in sampled_logs:
                     if not isinstance(log, dict):
                         continue
+                    
+                    # Get timestamp and try to convert to a readable format
+                    timestamp_raw = log.get("_standardized_timestamp_iso", log.get("timestamp", "N/A"))
+                    formatted_timestamp = "N/A"
+                    
+                    if isinstance(timestamp_raw, str) and (timestamp_raw.strip().lower() != "n/a"):
+                        # Try to parse ISO format first
+                        try:
+                            if 'T' in timestamp_raw:
+                                dt_obj = datetime.fromisoformat(timestamp_raw.replace('Z', '+00:00'))
+                                formatted_timestamp = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                            else:
+                                formatted_timestamp = timestamp_raw  # Already human-readable
+                        except ValueError:
+                            formatted_timestamp = timestamp_raw  # Keep original if parsing fails
+                    elif isinstance(timestamp_raw, (int, float)) and timestamp_raw > 0:
+                        # Try to convert Unix timestamp to datetime
+                        try:
+                            dt_obj = datetime.fromtimestamp(timestamp_raw)
+                            formatted_timestamp = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                        except (ValueError, OverflowError, OSError):
+                            formatted_timestamp = str(timestamp_raw)  # Keep as string if conversion fails
+                    
                     log_entry = {
                         "Log ID": log.get("_qdrant_id", "N/A"),
-                        "Timestamp": log.get("_standardized_timestamp_iso", log.get("timestamp", "N/A")),
+                        "Timestamp": formatted_timestamp,
                         "Device": log.get("device", "N/A"),
                         "Raw Log": log.get("raw_log", log.get("message", "N/A"))[:100] + ("..." if len(log.get("raw_log", log.get("message", ""))) > 100 else ""),
                         "Severity": log.get("severity", "N/A"),
@@ -346,7 +386,6 @@ def display_api_analysis(data: Dict[str, Any]):
             st.json(data)
 
 # --- Sidebar Controls ---
-# ... (keep the existing render_sidebar function - no changes needed here) ...
 def render_sidebar():
     # User Profile Section
     with st.sidebar:
@@ -371,6 +410,27 @@ def render_sidebar():
         with st.spinner("Loading metadata..."):
             metadata = load_metadata()
             st.success("Metadata loaded successfully!")
+
+    # --- Model Selection ---
+    st.sidebar.subheader("🧠 Model Selection")
+    
+    # Initialize model selection in session state if not already set
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = "gemini"
+    
+    # Toggle between Gemini and Ollama models
+    col1, col2 = st.sidebar.columns([1, 1])
+    with col1:
+        st.markdown("**Model Provider:**")
+    with col2:
+        selected = st.toggle("Use Ollama", value=(st.session_state.selected_model == "ollama"), key="model_toggle")
+        st.session_state.selected_model = "ollama" if selected else "gemini"
+    
+    # Display selected model info
+    model_name = "Ollama" if st.session_state.selected_model == "ollama" else "Gemini"
+    st.sidebar.markdown(f"**Selected Model:** {model_name}")
+    
+    st.sidebar.markdown("---")
 
     # --- Collection Selection ---
     st.sidebar.subheader("📍 Collection Selection")
@@ -540,9 +600,10 @@ def render_sidebar():
         disabled=api_is_unhealthy or not constructed_collection_name
     )
 
+    st.sidebar.caption("✨ Always include the most recent matching log to ensure up-to-date analysis")
     include_latest_log = st.sidebar.checkbox(
         "Include Latest Log",
-        value=False,
+        value=True,
         key="ai_include_latest_log",
         help="Include the most recent log matching the filters in the summary.",
         disabled=api_is_unhealthy or not constructed_collection_name
@@ -748,4 +809,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# END OF FILE 5_AI_Summary.py

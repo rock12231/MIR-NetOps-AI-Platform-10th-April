@@ -14,6 +14,70 @@ curl -X GET "http://localhost:8001/system/health"
 curl -X GET "http://localhost:8001/system/info"
 ```
 
+## Chat API
+
+### Send Query to Chat
+```bash
+curl -X POST "http://chat_api:8001/api/v1/chat/query" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -d '{
+    "query": "Show me recent logs for device agw66 at location ym"
+  }'
+```
+
+### Send Query with Context
+```bash
+curl -X POST "http://chat_api:8001/api/v1/chat/query" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AUTH_TOKEN" \
+  -d '{
+    "query": "Context: (Device='\''agw66'\'' Location='\''ym'\'') User Query: Show me recent critical errors"
+  }'
+```
+
+## AI Summary API
+
+### Get Collections
+```bash
+curl -X GET "http://localhost:8001/api/v1/collections"
+```
+
+### Generate Summary
+```bash
+curl -X POST "http://localhost:8001/api/v1/generate_summary" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_name": "router_agw66_ym_log_vector",
+    "limit": 50,
+    "start_time": 1737744000,
+    "end_time": 1738348800,
+    "include_latest": true,
+    "category": "ETHPORT",
+    "event_type": null,
+    "severity": null,
+    "interface": "Ethernet3/29"
+  }'
+```
+
+### Analyze Logs
+```bash
+curl -X POST "http://localhost:8001/api/v1/analyze_logs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "log_ids": ["log1", "log2"],
+    "logs": [
+      {
+        "timestamp": 1737744000,
+        "raw_log": "Jan 26 00:01:23 router_agw66 Interface Ethernet3/29 changed state to down",
+        "category": "ETHPORT",
+        "severity": 3
+      }
+    ],
+    "collection_name": "router_agw66_ym_log_vector"
+  }'
+```
+
 ## Network Overview API
 
 ### Get Network Metadata
@@ -53,7 +117,7 @@ curl -X GET "http://localhost:8001/api/v1/devices/device_data?collection_name=ro
 curl -X GET "http://localhost:8001/api/v1/devices/device_data?collection_name=router_agw66_ym_log_vector&start_time=2025-01-26T00:00:00&end_time=2025-01-31T23:59:59&category=ETHPORT&severity=3"
 ```
 
-### Get Interface Data
+### Get Interface Data by Device Type
 ```bash
 curl -X GET "http://localhost:8001/api/v1/devices/interface_data?start_time=2025-01-26T00:00:00&end_time=2025-01-31T23:59:59&device_type=agw"
 ```
@@ -93,20 +157,4 @@ curl -X GET "http://localhost:8001/api/v1/interfaces/interface_metrics?start_tim
 ### Categorize Interface Events
 ```bash
 curl -X GET "http://localhost:8001/api/v1/interfaces/categorize_events?start_time=2025-01-26T00:00:00&end_time=2025-01-31T23:59:59"
-```
-
-## AI Summary API
-
-### Generate Summary
-```bash
-curl -X POST "http://localhost:8001/api/v1/generate_summary" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "logs": [
-      "Jan 26 00:01:23 router_agw66 Interface Ethernet3/29 changed state to down",
-      "Jan 26 00:02:45 router_agw66 Interface Ethernet3/29 changed state to up",
-      "Jan 26 00:10:12 router_agw66 System restarted"
-    ],
-    "max_tokens": 200
-  }'
 ``` 

@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from qdrant_client.http import models as rest_models
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Network Log Analysis"])
 
 # Get LLM provider from environment for token counting and logging
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 
 @router.get("/collections")
@@ -85,6 +85,64 @@ async def get_collections_endpoint():
         raise HTTPException(status_code=500, detail=f"Error fetching collections: {str(e)}")
 
 
+def get_llm_for_provider(model_provider: Optional[str] = None):
+    """
+    Get the LLM client based on the requested provider.
+    If provider is not supported or not available, fall back to default.
+    
+    Args:
+        model_provider: The requested LLM provider (e.g., "gemini", "ollama")
+        
+    Returns:
+        The LLM client to use
+    """
+    from app.core.config import setup_gemini, setup_ollama
+    
+    provider = model_provider.lower() if model_provider else DEFAULT_LLM_PROVIDER
+    
+    # First try to use the provided LLM client from config
+    if not model_provider or provider == DEFAULT_LLM_PROVIDER:
+        return llm
+        
+    # If user requested a different provider than the default, try to set it up
+    try:
+        if provider == "gemini" and DEFAULT_LLM_PROVIDER != "gemini":
+            # Check if we have the necessary environment variables
+            gemini_api_key = os.getenv("GEMINI_API_KEY")
+            gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+            if gemini_api_key:
+                logger.info(f"Setting up Gemini model for this request")
+                return setup_gemini(
+                    model_name=gemini_model,
+                    api_key=gemini_api_key,
+                    temperature=0.10,
+                    max_tokens=8192
+                )
+            else:
+                logger.warning("Gemini API key not available, falling back to default LLM")
+                
+        elif provider == "ollama" and DEFAULT_LLM_PROVIDER != "ollama":
+            # Check if we have the necessary environment variables
+            ollama_url = os.getenv("OLLAMA_URL")
+            llm_model = os.getenv("LLM_MODEL")
+            if ollama_url and llm_model:
+                logger.info(f"Setting up Ollama model for this request")
+                return setup_ollama(
+                    model_name=llm_model,
+                    base_url=ollama_url,
+                    temperature=0.10,
+                    max_tokens=8192
+                )
+            else:
+                logger.warning("Ollama configuration not available, falling back to default LLM")
+    
+    except Exception as e:
+        logger.error(f"Error setting up {provider} LLM: {e}")
+    
+    # If we get here, use the default LLM
+    return llm
+
+
 @router.post("/generate_summary")
 async def generate_summary(request: SummaryRequest):
     """
@@ -108,9 +166,11 @@ async def generate_summary(request: SummaryRequest):
     event_type = request.event_type
     severity = request.severity
     interface = request.interface
+    # Get model provider from request
+    model_provider = getattr(request, 'model_provider', None)
     
     request_id = str(uuid.uuid4())
-    logger.info(f"RID: {request_id} - Summary for '{collection_name}', Limit: {limit}, Start: {start_time}, End: {end_time}, Latest: {include_latest}, Filters: Cat={category}, Evt={event_type}, Sev={severity}, Iface={interface}")
+    logger.info(f"RID: {request_id} - Summary for '{collection_name}', Limit: {limit}, Start: {start_time}, End: {end_time}, Latest: {include_latest}, Filters: Cat={category}, Evt={event_type}, Sev={severity}, Iface={interface}, Model: {model_provider or DEFAULT_LLM_PROVIDER}")
 
     _, device_id_context, location_context, _ = parse_collection_name_backend(collection_name)
 
@@ -210,6 +270,10 @@ async def generate_summary(request: SummaryRequest):
             "sampled_logs": []
         }
 
+    # Get LLM client based on provider
+    llm_client = get_llm_for_provider(model_provider)
+    actual_provider = llm_client.get("provider", DEFAULT_LLM_PROVIDER)
+
     prompt_template_str = load_prompt_template()
     # Schema definition should be robust for JSON parsing
     model_schema = {
@@ -258,18 +322,18 @@ async def generate_summary(request: SummaryRequest):
         logs=json.dumps(log_entries, indent=2, default=str) # Ensure datetimes, etc., are serialized
     )
 
-    input_token_count = count_tokens(formatted_prompt, provider=LLM_PROVIDER)
-    logger.info(f"RID: {request_id} - Input token count approx: {input_token_count} for provider: {LLM_PROVIDER}")
+    input_token_count = count_tokens(formatted_prompt, provider=actual_provider)
+    logger.info(f"RID: {request_id} - Input token count approx: {input_token_count} for provider: {actual_provider}")
 
     try:
-        response = llm["complete"](formatted_prompt)
+        response = llm_client["complete"](formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
         logger.error(f"RID: {request_id} - LLM API call failed: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Error communicating with LLM: {str(e)}")
 
-    output_token_count = count_tokens(raw_response_text, provider=LLM_PROVIDER)
-    token_logger.info(f"RID: {request_id}, Collection: {collection_name}, Provider: {LLM_PROVIDER}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
+    output_token_count = count_tokens(raw_response_text, provider=actual_provider)
+    token_logger.info(f"RID: {request_id}, Collection: {collection_name}, Provider: {actual_provider}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
     logger.debug(f"RID: {request_id} - Raw LLM response:\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)
@@ -296,6 +360,7 @@ async def generate_summary(request: SummaryRequest):
         "sample_size": len(log_entries),
         "device": device_id_context,
         "location": location_context,
+        "model_provider": actual_provider,
         "input_tokens": input_token_count,
         "output_tokens": output_token_count,
         "analysis": analysis_json,
@@ -321,8 +386,11 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
     log_ids = request.log_ids or []
     custom_logs = request.logs or [] # Logs provided directly in the request
     collection_name = request.collection_name or DEFAULT_COLLECTION
+    # Get model provider from request
+    model_provider = getattr(request, 'model_provider', None)
+    
     request_id = str(uuid.uuid4())
-    logger.info(f"RID: {request_id} - Analyze logs for '{collection_name}', IDs: {len(log_ids)}, Custom: {len(custom_logs)}")
+    logger.info(f"RID: {request_id} - Analyze logs for '{collection_name}', IDs: {len(log_ids)}, Custom: {len(custom_logs)}, Model: {model_provider or DEFAULT_LLM_PROVIDER}")
 
     _, device_id_context, location_context, _ = parse_collection_name_backend(collection_name)
 
@@ -363,6 +431,10 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
     if not log_entries:
         raise HTTPException(status_code=404, detail="No valid logs found or provided for analysis.")
 
+    # Get LLM client based on provider
+    llm_client = get_llm_for_provider(model_provider)
+    actual_provider = llm_client.get("provider", DEFAULT_LLM_PROVIDER)
+
     prompt_template_str = load_prompt_template()
     # Using the same schema as generate_summary for consistency in LLM output
     model_schema = {
@@ -391,18 +463,18 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
         logs=json.dumps(log_entries, indent=2, default=str)
     )
 
-    input_token_count = count_tokens(formatted_prompt, provider=LLM_PROVIDER)
-    logger.info(f"RID: {request_id} - Input token count for detailed analysis: {input_token_count} for provider: {LLM_PROVIDER}")
+    input_token_count = count_tokens(formatted_prompt, provider=actual_provider)
+    logger.info(f"RID: {request_id} - Input token count for detailed analysis: {input_token_count} for provider: {actual_provider}")
 
     try:
-        response = llm["complete"](formatted_prompt)
+        response = llm_client["complete"](formatted_prompt)
         raw_response_text = str(response)
     except Exception as e:
         logger.error(f"RID: {request_id} - LLM API call failed for detailed analysis: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Error communicating with LLM: {str(e)}")
 
-    output_token_count = count_tokens(raw_response_text, provider=LLM_PROVIDER)
-    token_logger.info(f"RID: {request_id}, Collection: {collection_name} (AnalyzeLogs), Provider: {LLM_PROVIDER}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
+    output_token_count = count_tokens(raw_response_text, provider=actual_provider)
+    token_logger.info(f"RID: {request_id}, Collection: {collection_name} (AnalyzeLogs), Provider: {actual_provider}, Logs: {len(log_entries)}, InTokens: {input_token_count}, OutTokens: {output_token_count}")
     logger.debug(f"RID: {request_id} - Raw LLM response (detailed analysis):\n{raw_response_text}")
 
     analysis_json, error_msg = clean_and_parse_json(raw_response_text)
@@ -422,6 +494,7 @@ async def analyze_logs_detailed(request: AnalyzeLogsRequest):
         "collection_name": collection_name,
         "device_context": device_id_context, # Device/location from collection name
         "location_context": location_context,
+        "model_provider": actual_provider,
         "input_tokens": input_token_count,
         "output_tokens": output_token_count,
         "analysis": analysis_json,

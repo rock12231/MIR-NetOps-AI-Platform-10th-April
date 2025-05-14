@@ -27,10 +27,12 @@ class AnalyzeLogsRequest(BaseModel):
         log_ids: Optional list of log entry IDs to analyze
         logs: Optional list of log entries to analyze
         collection_name: Qdrant collection name to search in (optional)
+        model_provider: Optional model provider for analysis
     """
-    log_ids: Optional[List[str]] = []
-    logs: Optional[List[Any]] = []
-    collection_name: Optional[str] = None
+    collection_name: str
+    log_ids: Optional[List[str]] = None
+    logs: Optional[List[Dict[str, Any]]] = None
+    model_provider: Optional[str] = None
 
 # --- Models for Summary Generation ---
 class SummaryRequest(BaseModel):
@@ -49,13 +51,15 @@ class SummaryRequest(BaseModel):
         event_type: Optional event type filter
         severity: Optional severity filter
         interface: Optional interface filter
+        model_provider: Optional model provider for summary generation
     """
-    collection_name: str
-    limit: int = 20
+    collection_name: Optional[str] = None
+    limit: int = Field(default=30, ge=1, le=100, description="Maximum number of logs to analyze")
     start_time: Optional[int] = None
     end_time: Optional[int] = None
-    include_latest: Optional[bool] = False
+    include_latest: bool = False
     category: Optional[str] = None
     event_type: Optional[str] = None
     severity: Optional[str] = None
     interface: Optional[str] = None
+    model_provider: Optional[str] = None
