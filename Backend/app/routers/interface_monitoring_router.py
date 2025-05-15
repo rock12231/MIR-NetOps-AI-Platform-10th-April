@@ -4,7 +4,7 @@ import json
 import os
 from typing import Dict, List, Optional, Union, Any
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from qdrant_client.http import models
 from qdrant_client.models import Filter, FieldCondition, Range, MatchValue
 import pandas as pd
@@ -13,6 +13,13 @@ from io import StringIO
 
 from app.core.config import qdrant
 from app.utils.qdrant_utils import AVAILABLE_COLLECTIONS, parse_collection_name_backend
+from app.core.models import (
+    InterfaceMonitoringDataRequest, 
+    FlappingDetectionRequest, 
+    StabilityAnalysisRequest, 
+    EventCategorizationRequest,
+    InterfaceDataResponse
+)
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -44,25 +51,15 @@ async def get_interface_collections(device_type: str = Query("agw", description=
         logger.error(f"Error getting interface collections: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting interface collections: {str(e)}")
 
-@router.get("/interface_data")
+@router.get("/interface_data", response_model=InterfaceDataResponse)
 async def get_interface_data(
-    start_time: datetime = Query(..., description="Start time for filtering"),
-    end_time: datetime = Query(..., description="End time for filtering"),
-    device: Optional[str] = Query(None, description="Filter by device name"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    interface: Optional[str] = Query(None, description="Filter by interface name"),
-    total_limit: int = Query(10000, description="Maximum total records to return")
+    request: InterfaceMonitoringDataRequest = Depends()
 ):
     """
     Fetch interface events data from Qdrant across collections.
     
     Args:
-        start_time: Start time for filtering
-        end_time: End time for filtering
-        device: Filter by device name
-        location: Filter by location
-        interface: Filter by interface name
-        total_limit: Maximum number of records to return
+        request: Interface monitoring data request parameters
         
     Returns:
         Dict containing interface events data
@@ -70,13 +67,13 @@ async def get_interface_data(
     try:
         # Safely get the integer value - use the raw value, not the Query object
         total_limit_int = 10000  # Default value
-        if isinstance(total_limit, int):
-            total_limit_int = total_limit
+        if isinstance(request.total_limit, int):
+            total_limit_int = request.total_limit
         
         # Convert string parameters to actual strings
-        device_str = str(device) if device is not None else None
-        location_str = str(location) if location is not None else None
-        interface_str = str(interface) if interface is not None else None
+        device_str = str(request.device) if request.device is not None else None
+        location_str = str(request.location) if request.location is not None else None
+        interface_str = str(request.interface) if request.interface is not None else None
         
         # Determine collection to query
         if device_str and location_str:
@@ -96,7 +93,7 @@ async def get_interface_data(
                 collections = [c for c in collections if location_str.lower() in c.lower()]
         
         if not collections:
-            return {"data": [], "count": 0, "message": "No matching collections found"}
+            return InterfaceDataResponse(data=[], count=0, message="No matching collections found")
         
         # Calculate per-collection limit using plain integers
         per_collection_limit = total_limit_int // max(1, len(collections))
@@ -114,8 +111,8 @@ async def get_interface_data(
                     FieldCondition(
                         key="timestamp",
                         range=Range(
-                            gte=int(start_time.timestamp()),
-                            lte=int(end_time.timestamp())
+                            gte=int(request.start_time.timestamp()),
+                            lte=int(request.end_time.timestamp())
                         )
                     ),
                     # Filter for interface events (ETHPORT category)
@@ -185,36 +182,24 @@ async def get_interface_data(
                 continue
         
         if not all_data:
-            return {"data": [], "count": 0, "message": "No interface data found with the specified filters"}
+            return InterfaceDataResponse(data=[], count=0, message="No interface data found with the specified filters")
             
         logger.info(f"Fetched {len(all_data)} interface events")
-        return {"data": all_data, "count": len(all_data)}
+        return InterfaceDataResponse(data=all_data, count=len(all_data))
         
     except Exception as e:
         logger.error(f"Error in get_interface_data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching interface data: {str(e)}")
 
-@router.get("/detect_flapping")
+@router.get("/detect_flapping", response_model=InterfaceDataResponse)
 async def detect_flapping_interfaces(
-    start_time: datetime = Query(..., description="Start time for filtering"),
-    end_time: datetime = Query(..., description="End time for filtering"),
-    device: Optional[str] = Query(None, description="Filter by device name"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    interface: Optional[str] = Query(None, description="Filter by interface name"),
-    time_threshold_minutes: int = Query(30, description="Maximum time between state changes to be considered flapping"),
-    min_transitions: int = Query(3, description="Minimum number of state transitions required")
+    request: FlappingDetectionRequest = Depends()
 ):
     """
     Identifies interfaces that are "flapping" (frequently changing state).
     
     Args:
-        start_time: Start time for filtering
-        end_time: End time for filtering
-        device: Filter by device name
-        location: Filter by location
-        interface: Filter by interface name
-        time_threshold_minutes: Maximum time between state changes to be considered flapping
-        min_transitions: Minimum number of state transitions required
+        request: Flapping detection request parameters
         
     Returns:
         Dict containing flapping interfaces data
@@ -224,35 +209,37 @@ async def detect_flapping_interfaces(
         time_threshold_min = 30  # Default value
         min_transitions_count = 3  # Default value
         
-        if isinstance(time_threshold_minutes, int):
-            time_threshold_min = time_threshold_minutes
+        if isinstance(request.time_threshold_minutes, int):
+            time_threshold_min = request.time_threshold_minutes
             
-        if isinstance(min_transitions, int):
-            min_transitions_count = min_transitions
+        if isinstance(request.min_transitions, int):
+            min_transitions_count = request.min_transitions
         
         # Convert string parameters to actual strings
-        device_str = str(device) if device is not None else None
-        location_str = str(location) if location is not None else None
-        interface_str = str(interface) if interface is not None else None
+        device_str = str(request.device) if request.device is not None else None
+        location_str = str(request.location) if request.location is not None else None
+        interface_str = str(request.interface) if request.interface is not None else None
         
         # First get the interface data
-        interface_data_response = await get_interface_data(
-            start_time=start_time,
-            end_time=end_time,
+        interface_data_request = InterfaceMonitoringDataRequest(
+            start_time=request.start_time,
+            end_time=request.end_time,
             device=device_str,
             location=location_str,
             interface=interface_str
         )
         
-        if not interface_data_response["data"]:
-            return {"data": [], "count": 0, "message": "No interface data found to analyze"}
+        interface_data_response = await get_interface_data(interface_data_request)
+        
+        if not interface_data_response.data:
+            return InterfaceDataResponse(data=[], count=0, message="No interface data found to analyze")
             
         # Convert to DataFrame
-        df = pd.DataFrame(interface_data_response["data"])
+        df = pd.DataFrame(interface_data_response.data)
         
         # Ensure required columns exist
         if 'interface' not in df.columns:
-            return {"data": [], "count": 0, "message": "Interface column not found in data"}
+            return InterfaceDataResponse(data=[], count=0, message="Interface column not found in data")
             
         # Create timestamp_dt column if needed
         if 'timestamp_dt' not in df.columns and 'timestamp' in df.columns:
@@ -311,31 +298,21 @@ async def detect_flapping_interfaces(
                         'category': group['category'].iloc[0] if 'category' in group.columns else None,
                     })
         
-        return {"data": flapping_interfaces, "count": len(flapping_interfaces)}
+        return InterfaceDataResponse(data=flapping_interfaces, count=len(flapping_interfaces))
         
     except Exception as e:
         logger.error(f"Error in detect_flapping_interfaces: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error detecting flapping interfaces: {str(e)}")
 
-@router.get("/analyze_stability")
+@router.get("/analyze_stability", response_model=InterfaceDataResponse)
 async def analyze_interface_stability(
-    start_time: datetime = Query(..., description="Start time for filtering"),
-    end_time: datetime = Query(..., description="End time for filtering"),
-    device: Optional[str] = Query(None, description="Filter by device name"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    interface: Optional[str] = Query(None, description="Filter by interface name"),
-    time_window_hours: int = Query(24, description="Time window for analysis in hours")
+    request: StabilityAnalysisRequest = Depends()
 ):
     """
     Calculate stability metrics for each interface.
     
     Args:
-        start_time: Start time for filtering
-        end_time: End time for filtering
-        device: Filter by device name
-        location: Filter by location
-        interface: Filter by interface name
-        time_window_hours: Time window for analysis in hours
+        request: Stability analysis request parameters 
         
     Returns:
         Dict containing interface stability metrics
@@ -343,32 +320,34 @@ async def analyze_interface_stability(
     try:
         # Get the integer value directly
         window_hours = 24  # Default value
-        if isinstance(time_window_hours, int):
-            window_hours = time_window_hours
+        if isinstance(request.time_window_hours, int):
+            window_hours = request.time_window_hours
             
         # Convert string parameters to actual strings
-        device_str = str(device) if device is not None else None
-        location_str = str(location) if location is not None else None
-        interface_str = str(interface) if interface is not None else None
+        device_str = str(request.device) if request.device is not None else None
+        location_str = str(request.location) if request.location is not None else None
+        interface_str = str(request.interface) if request.interface is not None else None
         
         # First get the interface data
-        interface_data_response = await get_interface_data(
-            start_time=start_time,
-            end_time=end_time,
+        interface_data_request = InterfaceMonitoringDataRequest(
+            start_time=request.start_time,
+            end_time=request.end_time,
             device=device_str,
             location=location_str,
             interface=interface_str
         )
         
-        if not interface_data_response["data"]:
-            return {"data": [], "count": 0, "message": "No interface data found to analyze"}
+        interface_data_response = await get_interface_data(interface_data_request)
+        
+        if not interface_data_response.data:
+            return InterfaceDataResponse(data=[], count=0, message="No interface data found to analyze")
             
         # Convert to DataFrame
-        df = pd.DataFrame(interface_data_response["data"])
+        df = pd.DataFrame(interface_data_response.data)
         
         # Ensure required columns exist
         if 'interface' not in df.columns:
-            return {"data": [], "count": 0, "message": "Interface column not found in data"}
+            return InterfaceDataResponse(data=[], count=0, message="Interface column not found in data")
             
         # Create timestamp_dt column if needed
         if 'timestamp_dt' not in df.columns and 'timestamp' in df.columns:
@@ -433,58 +412,52 @@ async def analyze_interface_stability(
                 'first_event': group['timestamp_dt'].min().isoformat()
             })
         
-        return {"data": stability_metrics, "count": len(stability_metrics)}
+        return InterfaceDataResponse(data=stability_metrics, count=len(stability_metrics))
         
     except Exception as e:
         logger.error(f"Error in analyze_interface_stability: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing interface stability: {str(e)}")
 
 
-@router.get("/categorize_events")
+@router.get("/categorize_events", response_model=InterfaceDataResponse)
 async def categorize_interface_events(
-    start_time: datetime = Query(..., description="Start time for filtering"),
-    end_time: datetime = Query(..., description="End time for filtering"),
-    device: Optional[str] = Query(None, description="Filter by device name"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    interface: Optional[str] = Query(None, description="Filter by interface name")
+    request: EventCategorizationRequest = Depends()
 ):
     """
     Categorize interface events into appropriate types for analysis.
     
     Args:
-        start_time: Start time for filtering
-        end_time: End time for filtering
-        device: Filter by device name
-        location: Filter by location
-        interface: Filter by interface name
+        request: Event categorization request parameters
         
     Returns:
         Dict with categorized interface events
     """
     try:
         # Convert string parameters to actual strings
-        device_str = str(device) if device is not None else None
-        location_str = str(location) if location is not None else None
-        interface_str = str(interface) if interface is not None else None
+        device_str = str(request.device) if request.device is not None else None
+        location_str = str(request.location) if request.location is not None else None
+        interface_str = str(request.interface) if request.interface is not None else None
         
         # First get the interface data
-        interface_data_response = await get_interface_data(
-            start_time=start_time,
-            end_time=end_time,
+        interface_data_request = InterfaceMonitoringDataRequest(
+            start_time=request.start_time,
+            end_time=request.end_time,
             device=device_str,
             location=location_str,
             interface=interface_str
         )
         
-        if not interface_data_response["data"]:
-            return {"data": [], "count": 0, "message": "No interface data found to categorize"}
+        interface_data_response = await get_interface_data(interface_data_request)
+        
+        if not interface_data_response.data:
+            return InterfaceDataResponse(data=[], count=0, message="No interface data found to categorize")
             
         # Convert to DataFrame
-        df = pd.DataFrame(interface_data_response["data"])
+        df = pd.DataFrame(interface_data_response.data)
         
         # Ensure event_type column exists
         if 'event_type' not in df.columns:
-            return {"data": [], "count": 0, "message": "Event type column not found in data"}
+            return InterfaceDataResponse(data=[], count=0, message="Event type column not found in data")
         
         # Create event category column
         df['event_category'] = 'Other'
@@ -507,7 +480,7 @@ async def categorize_interface_events(
         # Convert data back to dict
         categorized_data = df.to_dict(orient='records')
         
-        return {"data": categorized_data, "count": len(categorized_data)}
+        return InterfaceDataResponse(data=categorized_data, count=len(categorized_data))
         
     except Exception as e:
         logger.error(f"Error in categorize_interface_events: {str(e)}")

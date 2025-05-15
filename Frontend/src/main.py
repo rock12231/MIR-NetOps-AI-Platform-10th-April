@@ -284,7 +284,7 @@ def main():
                     st.markdown('<p><span class="status-success">✅ Version : '+system_info["version"]+'</span></p>', unsafe_allow_html=True)
                     st.markdown('<p><span class="status-success">✅ Qdrant Status : '+ system_info["qdrant"]["status"]+'</span></p>', unsafe_allow_html=True)
                     st.markdown('<p><span class="status-success">✅ Qdrant Collections : '+ str(len(system_info["qdrant"]["collections"])) +'</span></p>', unsafe_allow_html=True)
-                    st.markdown('<p><span class="status-success">✅ LLM Model : '+ system_info["llm"]["model_name"] +' Provider : '+ system_info["llm"]["provider"]+')</span></p>', unsafe_allow_html=True)
+                    st.markdown('<p><span class="status-success">✅ LLM Model : '+ system_info["llm"]["model_name"] +'-'+ 'Provider : '+ system_info["llm"]["provider"]+'</span></p>', unsafe_allow_html=True)
                     logger.info("System info fetched successfully.")
                 else:
                     st.markdown('<p><span class="status-error">❌ Failed to fetch system info</span></p>', unsafe_allow_html=True)

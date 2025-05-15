@@ -4,7 +4,7 @@ import json
 import os
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from qdrant_client.http import models
 from qdrant_client.models import Filter, FieldCondition, Range, MatchValue
 import pandas as pd
@@ -12,6 +12,7 @@ from io import StringIO
 
 from app.core.config import qdrant
 from app.utils.qdrant_utils import AVAILABLE_COLLECTIONS, parse_collection_name_backend
+from app.core.models import NetworkMetadataResponse, AggregatedNetworkDataRequest, AggregatedNetworkDataResponse
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api/v1/network", tags=["Network Overview"])
 # Path to metadata file
 METADATA_PATH = os.path.join("data", "qdrant_db_metadata.json")
 
-@router.get("/metadata", response_model=Dict)
+@router.get("/metadata", response_model=NetworkMetadataResponse)
 async def get_metadata():
     """
     Get metadata about collections and devices for UI filtering.
@@ -29,13 +30,13 @@ async def get_metadata():
         if os.path.exists(METADATA_PATH):
             with open(METADATA_PATH, 'r') as f:
                 metadata = json.load(f)
-                return metadata
+                return NetworkMetadataResponse(**metadata)
         else:
             logger.warning(f"Metadata file {METADATA_PATH} not found")
-            return get_default_metadata()
+            return NetworkMetadataResponse(**get_default_metadata())
     except json.JSONDecodeError as e:
         logger.error(f"Error parsing metadata file: {str(e)}")
-        return get_default_metadata()
+        return NetworkMetadataResponse(**get_default_metadata())
     except Exception as e:
         logger.error(f"Error loading metadata: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error loading metadata: {str(e)}")
@@ -65,13 +66,9 @@ async def get_collections():
         logger.error(f"Error getting collections: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting collections: {str(e)}")
 
-@router.get("/aggregated_data")
+@router.get("/aggregated_data", response_model=AggregatedNetworkDataResponse)
 async def get_aggregated_network_data(
-    start_time: datetime = Query(..., description="Start time for filtering"),
-    end_time: datetime = Query(..., description="End time for filtering"),
-    device_types: List[str] = Query(None, description="List of device types to include"),
-    locations: List[str] = Query(None, description="List of locations to include"),
-    limit_per_collection: int = Query(200, description="Limit records per collection")
+    request: AggregatedNetworkDataRequest = Depends()
 ):
     """
     Fetch aggregated network data across multiple collections for network-wide analysis.
@@ -81,10 +78,10 @@ async def get_aggregated_network_data(
         all_collections = await get_collections()
         
         # Filter collections based on device types if specified
-        if device_types:
+        if request.device_types:
             filtered_collections = []
             for col in all_collections:
-                for device_type in device_types:
+                for device_type in request.device_types:
                     if device_type.lower() in col.lower():
                         filtered_collections.append(col)
                         break
@@ -102,12 +99,12 @@ async def get_aggregated_network_data(
                 device_type, device_id, location, _ = parse_collection_name_backend(collection_name)
                 
                 # Skip if location filtering is active and this location isn't included
-                if locations and location not in locations:
+                if request.locations and location not in request.locations:
                     continue
                 
                 # Convert timestamps to seconds
-                start_timestamp = int(start_time.timestamp())
-                end_timestamp = int(end_time.timestamp())
+                start_timestamp = int(request.start_time.timestamp())
+                end_timestamp = int(request.end_time.timestamp())
                 
                 # Create filter conditions
                 must_conditions = [
@@ -127,7 +124,7 @@ async def get_aggregated_network_data(
                 search_result = qdrant.scroll(
                     collection_name=collection_name,
                     scroll_filter=search_filter,
-                    limit=limit_per_collection,
+                    limit=request.limit_per_collection,
                     with_payload=True
                 )
                 
@@ -152,7 +149,7 @@ async def get_aggregated_network_data(
         
         # Return data as list of dictionaries
         logger.info(f"Fetched {len(all_data)} records from {len(collections)} collections")
-        return {"data": all_data, "count": len(all_data)}
+        return AggregatedNetworkDataResponse(data=all_data, count=len(all_data))
     
     except Exception as e:
         logger.error(f"Error in get_aggregated_network_data: {str(e)}")
