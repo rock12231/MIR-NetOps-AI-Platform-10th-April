@@ -23,6 +23,9 @@ def init_session_state():
     logger.debug("Session state initialized.")
 
 def login():
+    st.session_state.logged_in = True
+    st.session_state.username = "username"
+    st.session_state.token = access_token
     """Handle user login via API"""
     st.subheader("Login Required")
     with st.form("login_form"):

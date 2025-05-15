@@ -441,25 +441,6 @@ def main():
         # Calculate interface metrics
         with st.spinner("Calculating interface metrics..."):
             metrics = calculate_interface_metrics(df, current_filters["stability_window_hours"])
-            
-            # Display debug info 
-            st.sidebar.markdown("### Debug Info")
-            if st.sidebar.checkbox("Show API Response", value=False):
-                st.sidebar.json(metrics_response)
-                
-            if st.sidebar.checkbox("Show Processed Metrics", value=False):
-                st.sidebar.json(metrics)
-            
-            # Add test preset option
-            if st.sidebar.checkbox("Enable Test Data", value=False):
-                st.sidebar.info("Using test data instead of API values")
-                metrics = {
-                    'total_interfaces': 24,
-                    'down_interfaces': 3,
-                    'flapping_interfaces': 2,
-                    'status_changes': 47,
-                    'config_changes': 8
-                }
         
         # Display metrics cards with tooltips
         st.subheader("Interface Health Dashboard")
