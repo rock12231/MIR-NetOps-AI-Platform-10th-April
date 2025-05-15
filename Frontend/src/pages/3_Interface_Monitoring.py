@@ -440,56 +440,7 @@ def main():
         
         # Calculate interface metrics
         with st.spinner("Calculating interface metrics..."):
-            # Option 1: Calculate metrics using the API
-            params = {
-                "start_time": current_filters["start_time"].isoformat(),
-                "end_time": current_filters["end_time"].isoformat(),
-                "time_window_hours": int(current_filters["stability_window_hours"])  # Ensure it's an int
-            }
-            
-            # Add optional filters if specified
-            if current_filters["device"]:
-                params["device"] = str(current_filters["device"])  # Ensure it's a string
-            if current_filters["location"]:
-                params["location"] = str(current_filters["location"])  # Ensure it's a string
-            
-            # Call API to get metrics
-            logger.info(f"Calling interface_metrics API with params: {params}")
-            metrics_response = call_api("/api/v1/interfaces/interface_metrics", params)
-            
-            if metrics_response:
-                # Check if the response has the expected format
-                required_metrics = ['total_interfaces', 'down_interfaces', 'flapping_interfaces', 'status_changes']
-                if all(metric in metrics_response for metric in required_metrics):
-                    metrics = metrics_response
-                else:
-                    # Response is missing some required metrics
-                    logger.warning(f"API response missing required metrics: {metrics_response}")
-                    metrics = {
-                        'total_interfaces': metrics_response.get('total_interfaces', 0),
-                        'down_interfaces': metrics_response.get('down_interfaces', 0),
-                        'flapping_interfaces': metrics_response.get('flapping_interfaces', 0),
-                        'status_changes': metrics_response.get('status_changes', 0),
-                        'config_changes': metrics_response.get('config_changes', 0)
-                    }
-            else:
-                # No valid response, create default metrics
-                logger.warning("No metrics response from API, using default values")
-                metrics = {
-                    'total_interfaces': 0,
-                    'down_interfaces': 0,
-                    'flapping_interfaces': 0,
-                    'status_changes': 0,
-                    'config_changes': 0
-                }
-                
-                # Try to calculate locally if we have data
-                if 'df' in locals() and df is not None and not df.empty:
-                    try:
-                        local_metrics = calculate_interface_metrics(df, current_filters["stability_window_hours"])
-                        metrics.update(local_metrics)
-                    except Exception as e:
-                        logger.error(f"Error calculating local metrics: {str(e)}")
+            metrics = calculate_interface_metrics(df, current_filters["stability_window_hours"])
             
             # Display debug info 
             st.sidebar.markdown("### Debug Info")
