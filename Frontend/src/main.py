@@ -363,7 +363,7 @@ def main():
     # st.sidebar.page_link("pages/2_Devices_Dashboard.py", label="📊 Devices Dashboard", icon="📊")
     # st.sidebar.page_link("pages/3_Interface_Monitoring.py", label="🔌 Interface Monitoring", icon="🔌")
     # st.sidebar.page_link("pages/4_Chatbot.py", label="🤖 AI Chatbot", icon="🤖")
-    # st.sidebar.page_link("pages/5_ai_summary.py", label="🧠 AI Summary", icon="🧠")
+    # st.sidebar.page_link("pages/5_AI_Summary.py", label="🧠 AI Summary", icon="🧠")
 
     # --- Sidebar for Logout and User Info ---
     with st.sidebar:
